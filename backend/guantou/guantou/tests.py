@@ -210,3 +210,195 @@ class GuantouApiTests(TestCase):
         self.assertEqual(response.data["text"], "行")
         self.assertEqual(len(response.data["flavors"]), 1)
         self.assertEqual(response.data["flavors"][0]["name"], "行走")
+
+
+class CanTransitionTests(TestCase):
+    """罐头状态转换端点测试"""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username="owner", password="pw")
+        self.other_user = User.objects.create_user(username="other", password="pw")
+        self.staff_user = User.objects.create_user(
+            username="staff", password="pw", is_staff=True
+        )
+        self.dialect = Dialect.objects.create(name="莆仙方言", code="puxian")
+        self.can = Can.objects.create(
+            audio_url="https://example.com/audio.mp3",
+            recorder=self.owner,
+            dialect=self.dialect,
+            status=Can.Status.PENDING,
+            visibility=True,
+        )
+
+    def _client_for(self, user):
+        client = APIClient()
+        client.force_authenticate(user=user)
+        return client
+
+    def test_staff_verify_legal_transition(self):
+        """合法转换：staff 用户执行 submit，pending→tentative，返回 200 + 完整 Can JSON"""
+        client = self._client_for(self.staff_user)
+        res = client.post(
+            f"/api/cans/{self.can.id}/transition/",
+            {"action": "submit", "reason": "社区确认"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["status"], "tentative")
+        self.assertEqual(res.data["id"], self.can.id)
+        # 验证 transition_log 记录
+        self.can.refresh_from_db()
+        self.assertEqual(len(self.can.transition_log), 1)
+        log = self.can.transition_log[0]
+        self.assertEqual(log["from"], "pending")
+        self.assertEqual(log["to"], "tentative")
+        self.assertEqual(log["by"], self.staff_user.id)
+        self.assertEqual(log["reason"], "社区确认")
+        self.assertIn("at", log)
+
+    def test_staff_verify_after_submit(self):
+        """合法转换：staff 用户执行 verify，tentative→verified"""
+        self.can.status = Can.Status.TENTATIVE
+        self.can.save(update_fields=["status"])
+        client = self._client_for(self.staff_user)
+        res = client.post(
+            f"/api/cans/{self.can.id}/transition/",
+            {"action": "verify", "reason": ""},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["status"], "verified")
+        self.can.refresh_from_db()
+        self.assertEqual(self.can.verifier, self.staff_user)
+
+    def test_non_staff_verify_returns_403(self):
+        """权限拒绝：非 staff 用户调 verify 返回 403"""
+        self.can.status = Can.Status.TENTATIVE
+        self.can.save(update_fields=["status"])
+        client = self._client_for(self.other_user)
+        res = client.post(
+            f"/api/cans/{self.can.id}/transition/",
+            {"action": "verify"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 403)
+
+    def test_illegal_transition_from_unlabeled(self):
+        """非法转换：从 unlabeled 直接调 verify 返回 400"""
+        self.can.status = Can.Status.UNLABELED
+        self.can.save(update_fields=["status"])
+        client = self._client_for(self.staff_user)
+        res = client.post(
+            f"/api/cans/{self.can.id}/transition/",
+            {"action": "verify"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("不允许从", res.data["detail"])
+
+    def test_illegal_transition_submit_from_unlabeled(self):
+        """非法转换：从 unlabeled 调 submit 返回 400（必须先经过 pending）"""
+        self.can.status = Can.Status.UNLABELED
+        self.can.save(update_fields=["status"])
+        client = self._client_for(self.owner)
+        res = client.post(
+            f"/api/cans/{self.can.id}/transition/",
+            {"action": "submit"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_transition_log_accumulates(self):
+        """transition_log 正确记录多次操作"""
+        client = self._client_for(self.staff_user)
+        # pending -> tentative
+        client.post(
+            f"/api/cans/{self.can.id}/transition/",
+            {"action": "submit", "reason": "first"},
+            format="json",
+        )
+        # tentative -> verified
+        client.post(
+            f"/api/cans/{self.can.id}/transition/",
+            {"action": "verify", "reason": "second"},
+            format="json",
+        )
+        self.can.refresh_from_db()
+        self.assertEqual(len(self.can.transition_log), 2)
+        self.assertEqual(self.can.transition_log[0]["from"], "pending")
+        self.assertEqual(self.can.transition_log[0]["to"], "tentative")
+        self.assertEqual(self.can.transition_log[1]["from"], "tentative")
+        self.assertEqual(self.can.transition_log[1]["to"], "verified")
+
+
+class IsOwnerOrAdminPermissionTests(TestCase):
+    """对象级权限测试：PUT/DELETE 仅允许创建者或 staff"""
+
+    def setUp(self):
+        self.user_a = User.objects.create_user(username="userA", password="pw")
+        self.user_b = User.objects.create_user(username="userB", password="pw")
+        self.staff_user = User.objects.create_user(
+            username="admin", password="pw", is_staff=True
+        )
+        self.dialect = Dialect.objects.create(name="莆仙方言", code="puxian")
+        self.can = Can.objects.create(
+            audio_url="https://example.com/audio.mp3",
+            recorder=self.user_a,
+            dialect=self.dialect,
+            visibility=True,
+        )
+
+    def _client_for(self, user):
+        client = APIClient()
+        client.force_authenticate(user=user)
+        return client
+
+    def test_owner_can_put(self):
+        """用户 A 自己调 PUT 修改返回 200"""
+        client = self._client_for(self.user_a)
+        res = client.patch(
+            f"/api/cans/{self.can.id}/",
+            {"concept_text": "新概念"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.can.refresh_from_db()
+        self.assertEqual(self.can.concept_text, "新概念")
+
+    def test_non_owner_put_returns_403(self):
+        """用户 A 创建的 Can，用户 B（非 staff）调 PUT 修改返回 403"""
+        client = self._client_for(self.user_b)
+        res = client.patch(
+            f"/api/cans/{self.can.id}/",
+            {"concept_text": "恶意修改"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 403)
+
+    def test_staff_can_put(self):
+        """staff 用户可以修改任何资源"""
+        client = self._client_for(self.staff_user)
+        res = client.patch(
+            f"/api/cans/{self.can.id}/",
+            {"concept_text": "管理员修改"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+
+    def test_non_owner_delete_returns_403(self):
+        """非创建者非 staff 删除返回 403"""
+        client = self._client_for(self.user_b)
+        res = client.delete(f"/api/cans/{self.can.id}/")
+        self.assertEqual(res.status_code, 403)
+
+    def test_owner_can_delete(self):
+        """创建者可以删除自己的资源"""
+        client = self._client_for(self.user_a)
+        res = client.delete(f"/api/cans/{self.can.id}/")
+        self.assertEqual(res.status_code, 204)
+
+    def test_get_not_restricted(self):
+        """任何登录用户都可以 GET"""
+        client = self._client_for(self.user_b)
+        res = client.get(f"/api/cans/{self.can.id}/")
+        self.assertEqual(res.status_code, 200)
