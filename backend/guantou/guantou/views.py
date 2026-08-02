@@ -276,7 +276,7 @@ class NameplateViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(package_id=package)
         return queryset
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAuthenticated])
     def vote(self, request, pk=None):
         nameplate = self.get_object()
         with transaction.atomic():
