@@ -111,9 +111,9 @@
         "title" : "乡声集盒",
         "router" : {
             "mode" : "history",
-            "base" : "/__REPLACE_PREVIEW_BASE__/"
+            "base" : "/"
         },
-        "publicPath" : "/__REPLACE_PREVIEW_BASE__/",
+        "publicPath" : "/",
         "optimization" : {
             "treeShaking" : {
                 "enable" : false

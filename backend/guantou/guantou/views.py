@@ -4,6 +4,7 @@ from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from .models import (
     Can,
@@ -16,6 +17,7 @@ from .models import (
     Shelf,
 )
 from .permissions import IsOwnerOrAdmin
+from .services import aggregate_search
 from .serializers import (
     CanSerializer,
     DialectSerializer,
@@ -32,6 +34,33 @@ class CanWritePermission(permissions.BasePermission):
         if request.method in permissions.SAFE_METHODS:
             return True
         return bool(request.user and request.user.is_authenticated)
+
+
+class AggregateSearchView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        keyword = request.query_params.get("q") or request.query_params.get(
+            "search", ""
+        )
+        results = aggregate_search(
+            keyword,
+            user=request.user,
+            limit=request.query_params.get("limit"),
+        )
+        context = {"request": request}
+        return Response(
+            {
+                "keyword": results["keyword"],
+                "flavors": FlavorSerializer(
+                    results["flavors"], many=True, context=context
+                ).data,
+                "packages": PackageSerializer(
+                    results["packages"], many=True, context=context
+                ).data,
+                "cans": CanSerializer(results["cans"], many=True, context=context).data,
+            }
+        )
 
 
 class DialectViewSet(viewsets.ModelViewSet):
@@ -144,7 +173,9 @@ class CanViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if not (user and user.is_authenticated and user.is_staff):
             if user and user.is_authenticated:
-                queryset = queryset.filter(Q(visibility=True) | Q(recorder=user))
+                queryset = queryset.filter(
+                    Q(visibility=True) | Q(recorder=user) | Q(verifier=user)
+                )
             else:
                 queryset = queryset.filter(visibility=True)
         status_value = self.request.query_params.get("status")
@@ -182,7 +213,12 @@ class CanViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
-    @action(detail=True, methods=["post"], url_path="transition")
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="transition",
+        permission_classes=[permissions.IsAuthenticated],
+    )
     def transition(self, request, pk=None):
         can = self.get_object()
         action_name = request.data.get("action", "")
@@ -242,7 +278,12 @@ class CanViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(can)
         return Response(serializer.data)
 
-    @action(detail=True, methods=["get", "post"], url_path="nameplates")
+    @action(
+        detail=True,
+        methods=["get", "post"],
+        url_path="nameplates",
+        permission_classes=[CanWritePermission],
+    )
     def nameplates(self, request, pk=None):
         can = self.get_object()
         if request.method == "GET":

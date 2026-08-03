@@ -1,6 +1,6 @@
 # 乡声集盒 API
 
-所有新接口挂载在 `/api/`，分页使用 DRF 默认结构：
+所有业务接口直接挂载在根路径，分页使用 DRF 默认结构：
 
 ```json
 {
@@ -13,15 +13,38 @@
 
 ## 资源
 
-- `GET/POST /api/dialects/`
-- `GET/POST /api/packages/`
-- `GET/POST /api/flavors/`
-- `GET/POST /api/flavor-variants/`
-- `GET/POST /api/cans/`
-- `GET/POST /api/nameplates/`
-- `GET/POST /api/shelves/`
+- `GET/POST /dialects/`
+- `GET/POST /packages/`
+- `GET/POST /flavors/`
+- `GET/POST /flavor-variants/`
+- `GET/POST /cans/`
+- `GET/POST /nameplates/`
+- `GET/POST /shelves/`
+- `GET /search/`
+- `/users...`
+- `/login...`
+- `/announcements...`
+- `/site-settings...`
+- `/files...`
+- `/notifications...`
 
 写接口需要在 header 中传入旧系统的 `token`。
+
+## 错误响应
+
+后端统一返回可被前端 service 层消费的错误结构：
+
+```json
+{
+  "msg": "请先登录",
+  "message": "请先登录",
+  "code": "not_authenticated",
+  "details": {},
+  "request_id": "..."
+}
+```
+
+前端应优先展示 `msg` 或 `message`，并在排查问题时把 `request_id` 带给后端。客户端传入 `X-Request-ID` 时，后端会在响应头 `X-Request-ID` 和错误 payload 中透传；未传入时后端自动生成。
 
 ## 数据约定
 
@@ -36,7 +59,7 @@
 创建罐头：
 
 ```http
-POST /api/cans/
+POST /cans/
 ```
 
 ```json
@@ -52,12 +75,12 @@ POST /api/cans/
 
 常用查询：
 
-- `/api/cans/?status=unlabeled`
-- `/api/cans/?needs_label=true`
-- `/api/cans/?dialect=1`
-- `/api/cans/?flavor=1`
-- `/api/cans/?mine=true`
-- `/api/cans/?search=膝盖`
+- `/cans/?status=unlabeled`
+- `/cans/?needs_label=true`
+- `/cans/?dialect=1`
+- `/cans/?flavor=1`
+- `/cans/?mine=true`
+- `/cans/?search=膝盖`
 
 `dialect` 查询遵循“查父含子，查子不含父”。
 
@@ -66,7 +89,7 @@ POST /api/cans/
 给某个罐头贴铭牌：
 
 ```http
-POST /api/cans/{can_id}/nameplates/
+POST /cans/{can_id}/nameplates/
 ```
 
 ```json
@@ -83,7 +106,7 @@ POST /api/cans/{can_id}/nameplates/
 给铭牌投票：
 
 ```http
-POST /api/nameplates/{nameplate_id}/vote/
+POST /nameplates/{nameplate_id}/vote/
 ```
 
 ```json
@@ -141,9 +164,19 @@ POST /api/nameplates/{nameplate_id}/vote/
 
 常用查询：
 
-- `/api/flavors/?search=膝盖`
-- `/api/flavors/?package=1`
-- `/api/flavor-variants/?flavor=1&dialect=2`
-- `/api/packages/?search=行`
+- `/flavors/?search=膝盖`
+- `/flavors/?package=1`
+- `/flavor-variants/?flavor=1&dialect=2`
+- `/packages/?search=行`
 
 搜索写法时，前端应展示该写法关联的义项列表；进入义项详情后，再展示方言点变体和相关罐头。
+
+## 聚合搜索
+
+聚合搜索属于罐头核心领域，不单独拆 Django app：
+
+```http
+GET /search/?q=膝盖&limit=8
+```
+
+返回 `flavors`、`packages`、`cans` 三组结果。它不会改变外键检索方式；单资源筛选仍走 `/flavors/?package=...`、`/cans/?flavor=...` 等资源列表参数。

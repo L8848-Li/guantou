@@ -28,7 +28,7 @@ class GuantouApiTests(TestCase):
 
     def test_create_can_and_nameplate(self):
         can_res = self.client.post(
-            "/api/cans/",
+            "/cans/",
             {
                 "audio_url": "https://example.com/audio.mp3",
                 "dialect": self.child.id,
@@ -41,7 +41,7 @@ class GuantouApiTests(TestCase):
         self.assertEqual(can_res.status_code, 201)
         can_id = can_res.data["id"]
         plate_res = self.client.post(
-            f"/api/cans/{can_id}/nameplates/",
+            f"/cans/{can_id}/nameplates/",
             {
                 "flavor": self.flavor.id,
                 "package": self.package.id,
@@ -55,6 +55,115 @@ class GuantouApiTests(TestCase):
         self.assertEqual(can.recorder, self.user)
         self.assertEqual(can.status, Can.Status.PENDING)
         self.assertTrue(can.primary_nameplate.is_primary)
+
+    def test_authenticated_user_can_add_nameplate_to_public_can(self):
+        other_user = User.objects.create_user(username="labeler", password="pw")
+        can = Can.objects.create(
+            audio_url="https://example.com/audio.mp3",
+            recorder=self.user,
+            dialect=self.child,
+            concept_text="走路",
+            visibility=True,
+        )
+        client = APIClient()
+        client.force_authenticate(user=other_user)
+
+        response = client.post(
+            f"/cans/{can.id}/nameplates/",
+            {
+                "flavor": self.flavor.id,
+                "package": self.package.id,
+                "text_content": "趁行",
+                "definition": "走路",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        plate = Nameplate.objects.get(id=response.data["id"])
+        self.assertEqual(plate.creator, other_user)
+        self.assertEqual(plate.can, can)
+
+    def test_create_can_without_candidate_nameplate(self):
+        response = self.client.post(
+            "/cans/",
+            {
+                "audio_url": "https://example.com/plain.mp3",
+                "dialect": self.child.id,
+                "concept_text": "knee",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        can = Can.objects.get(id=response.data["id"])
+        self.assertEqual(can.recorder, self.user)
+        self.assertEqual(can.status, Can.Status.UNLABELED)
+        self.assertEqual(can.nameplates.count(), 0)
+
+    def test_create_can_with_initial_nameplate_creates_related_objects(self):
+        response = self.client.post(
+            "/cans/",
+            {
+                "audio_url": "https://example.com/knee.mp3",
+                "dialect": self.child.id,
+                "concept_text": "knee",
+                "initial_nameplate": {
+                    "text_content": "khnee",
+                    "definition": "kneecap",
+                    "package_type": Package.PackageType.PHONETIC,
+                    "evidence_level": Nameplate.EvidenceLevel.COMMUNITY,
+                    "source_citation": "elder",
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        can = Can.objects.get(id=response.data["id"])
+        plate = can.primary_nameplate
+        self.assertIsNotNone(plate)
+        self.assertEqual(can.status, Can.Status.PENDING)
+        self.assertEqual(plate.text_content, "khnee")
+        self.assertEqual(plate.package.package_type, Package.PackageType.PHONETIC)
+        self.assertEqual(plate.flavor.definition, "kneecap")
+        self.assertEqual(plate.creator, self.user)
+
+    def test_create_can_for_existing_flavor_creates_variant(self):
+        response = self.client.post(
+            "/cans/",
+            {
+                "audio_url": "https://example.com/flavor.mp3",
+                "dialect": self.child.id,
+                "flavor": self.flavor.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        can = Can.objects.get(id=response.data["id"])
+        self.assertEqual(can.flavor_variant.flavor, self.flavor)
+        self.assertEqual(can.flavor_variant.audio_url, can.audio_url)
+        self.assertEqual(can.concept_text, self.flavor.name)
+
+    def test_validation_errors_use_unified_shape(self):
+        response = self.client.post(
+            "/cans/",
+            {
+                "dialect": self.child.id,
+                "concept_text": "knee",
+            },
+            format="json",
+            HTTP_X_REQUEST_ID="test-request-id",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["code"], "validation_error")
+        self.assertIn("msg", response.data)
+        self.assertIn("message", response.data)
+        self.assertIn("details", response.data)
+        self.assertEqual(response.data["request_id"], "test-request-id")
+        self.assertEqual(response["X-Request-ID"], "test-request-id")
 
     def test_vote_promotes_strongest_nameplate(self):
         can = Can.objects.create(
@@ -80,7 +189,7 @@ class GuantouApiTests(TestCase):
             weight=2,
         )
         vote_res = self.client.post(
-            f"/api/nameplates/{strong.id}/vote/", {"delta": 1}, format="json"
+            f"/nameplates/{strong.id}/vote/", {"delta": 1}, format="json"
         )
         self.assertEqual(vote_res.status_code, 200)
         weak.refresh_from_db()
@@ -109,10 +218,10 @@ class GuantouApiTests(TestCase):
         )
 
         first_res = self.client.post(
-            f"/api/nameplates/{plate.id}/vote/", {"delta": 1}, format="json"
+            f"/nameplates/{plate.id}/vote/", {"delta": 1}, format="json"
         )
         second_res = self.client.post(
-            f"/api/nameplates/{plate.id}/vote/", {"delta": 1}, format="json"
+            f"/nameplates/{plate.id}/vote/", {"delta": 1}, format="json"
         )
 
         self.assertEqual(first_res.status_code, 200)
@@ -137,14 +246,10 @@ class GuantouApiTests(TestCase):
             package=self.package,
         )
 
-        self.client.post(
-            f"/api/nameplates/{plate.id}/vote/", {"delta": 1}, format="json"
-        )
+        self.client.post(f"/nameplates/{plate.id}/vote/", {"delta": 1}, format="json")
         other_client = APIClient()
         other_client.force_authenticate(user=other_user)
-        other_client.post(
-            f"/api/nameplates/{plate.id}/vote/", {"delta": 1}, format="json"
-        )
+        other_client.post(f"/nameplates/{plate.id}/vote/", {"delta": 1}, format="json")
 
         plate.refresh_from_db()
         self.assertEqual(plate.weight, 2)
@@ -157,7 +262,7 @@ class GuantouApiTests(TestCase):
             dialect=self.child,
             visibility=True,
         )
-        response = self.client.get("/api/cans/", {"dialect": self.root.id})
+        response = self.client.get("/cans/", {"dialect": self.root.id})
         self.assertEqual(response.status_code, 200)
         ids = [item["id"] for item in response.data["results"]]
         self.assertIn(can.id, ids)
@@ -198,13 +303,13 @@ class GuantouApiTests(TestCase):
         self.assertCountEqual(
             list(moon.packages.values_list("text", flat=True)), ["月亮", "月光"]
         )
-        response = self.client.get("/api/cans/", {"flavor": moon.id})
+        response = self.client.get("/cans/", {"flavor": moon.id})
         self.assertEqual(response.status_code, 200)
         ids = [item["id"] for item in response.data["results"]]
         self.assertIn(can.id, ids)
 
     def test_package_detail_includes_related_flavors(self):
-        response = self.client.get(f"/api/packages/{self.package.id}/")
+        response = self.client.get(f"/packages/{self.package.id}/")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["text"], "行")
@@ -239,7 +344,7 @@ class CanTransitionTests(TestCase):
         """合法转换：staff 用户执行 submit，pending→tentative，返回 200 + 完整 Can JSON"""
         client = self._client_for(self.staff_user)
         res = client.post(
-            f"/api/cans/{self.can.id}/transition/",
+            f"/cans/{self.can.id}/transition/",
             {"action": "submit", "reason": "社区确认"},
             format="json",
         )
@@ -262,7 +367,7 @@ class CanTransitionTests(TestCase):
         self.can.save(update_fields=["status"])
         client = self._client_for(self.staff_user)
         res = client.post(
-            f"/api/cans/{self.can.id}/transition/",
+            f"/cans/{self.can.id}/transition/",
             {"action": "verify", "reason": ""},
             format="json",
         )
@@ -277,11 +382,28 @@ class CanTransitionTests(TestCase):
         self.can.save(update_fields=["status"])
         client = self._client_for(self.other_user)
         res = client.post(
-            f"/api/cans/{self.can.id}/transition/",
+            f"/cans/{self.can.id}/transition/",
             {"action": "verify"},
             format="json",
         )
         self.assertEqual(res.status_code, 403)
+
+    def test_assigned_verifier_can_verify(self):
+        """被分配为 verifier 的非 staff 用户可以执行 verify"""
+        self.can.status = Can.Status.TENTATIVE
+        self.can.visibility = False
+        self.can.verifier = self.other_user
+        self.can.save(update_fields=["status", "visibility", "verifier"])
+        client = self._client_for(self.other_user)
+        res = client.post(
+            f"/cans/{self.can.id}/transition/",
+            {"action": "verify", "reason": "assigned review"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["status"], "verified")
+        self.can.refresh_from_db()
+        self.assertEqual(self.can.verifier, self.other_user)
 
     def test_illegal_transition_from_unlabeled(self):
         """非法转换：从 unlabeled 直接调 verify 返回 400"""
@@ -289,7 +411,7 @@ class CanTransitionTests(TestCase):
         self.can.save(update_fields=["status"])
         client = self._client_for(self.staff_user)
         res = client.post(
-            f"/api/cans/{self.can.id}/transition/",
+            f"/cans/{self.can.id}/transition/",
             {"action": "verify"},
             format="json",
         )
@@ -302,7 +424,7 @@ class CanTransitionTests(TestCase):
         self.can.save(update_fields=["status"])
         client = self._client_for(self.owner)
         res = client.post(
-            f"/api/cans/{self.can.id}/transition/",
+            f"/cans/{self.can.id}/transition/",
             {"action": "submit"},
             format="json",
         )
@@ -313,13 +435,13 @@ class CanTransitionTests(TestCase):
         client = self._client_for(self.staff_user)
         # pending -> tentative
         client.post(
-            f"/api/cans/{self.can.id}/transition/",
+            f"/cans/{self.can.id}/transition/",
             {"action": "submit", "reason": "first"},
             format="json",
         )
         # tentative -> verified
         client.post(
-            f"/api/cans/{self.can.id}/transition/",
+            f"/cans/{self.can.id}/transition/",
             {"action": "verify", "reason": "second"},
             format="json",
         )
@@ -357,7 +479,7 @@ class IsOwnerOrAdminPermissionTests(TestCase):
         """用户 A 自己调 PUT 修改返回 200"""
         client = self._client_for(self.user_a)
         res = client.patch(
-            f"/api/cans/{self.can.id}/",
+            f"/cans/{self.can.id}/",
             {"concept_text": "新概念"},
             format="json",
         )
@@ -369,7 +491,7 @@ class IsOwnerOrAdminPermissionTests(TestCase):
         """用户 A 创建的 Can，用户 B（非 staff）调 PUT 修改返回 403"""
         client = self._client_for(self.user_b)
         res = client.patch(
-            f"/api/cans/{self.can.id}/",
+            f"/cans/{self.can.id}/",
             {"concept_text": "恶意修改"},
             format="json",
         )
@@ -379,7 +501,7 @@ class IsOwnerOrAdminPermissionTests(TestCase):
         """staff 用户可以修改任何资源"""
         client = self._client_for(self.staff_user)
         res = client.patch(
-            f"/api/cans/{self.can.id}/",
+            f"/cans/{self.can.id}/",
             {"concept_text": "管理员修改"},
             format="json",
         )
@@ -388,17 +510,17 @@ class IsOwnerOrAdminPermissionTests(TestCase):
     def test_non_owner_delete_returns_403(self):
         """非创建者非 staff 删除返回 403"""
         client = self._client_for(self.user_b)
-        res = client.delete(f"/api/cans/{self.can.id}/")
+        res = client.delete(f"/cans/{self.can.id}/")
         self.assertEqual(res.status_code, 403)
 
     def test_owner_can_delete(self):
         """创建者可以删除自己的资源"""
         client = self._client_for(self.user_a)
-        res = client.delete(f"/api/cans/{self.can.id}/")
+        res = client.delete(f"/cans/{self.can.id}/")
         self.assertEqual(res.status_code, 204)
 
     def test_get_not_restricted(self):
         """任何登录用户都可以 GET"""
         client = self._client_for(self.user_b)
-        res = client.get(f"/api/cans/{self.can.id}/")
+        res = client.get(f"/cans/{self.can.id}/")
         self.assertEqual(res.status_code, 200)
