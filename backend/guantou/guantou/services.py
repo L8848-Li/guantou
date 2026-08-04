@@ -1,10 +1,28 @@
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
+from utils.exceptions.types.bad_request import BadRequestException
+from utils.exceptions.types.forbidden import ForbiddenException
 
 from .models import Can, Flavor, FlavorPackage, FlavorVariant, Nameplate, Package
 
 DEFAULT_SEARCH_LIMIT = 8
 MAX_SEARCH_LIMIT = 20
+
+# 合法状态转换表：{action: {from_status: to_status}}
+CAN_TRANSITIONS = {
+    "submit": {"pending": "tentative"},
+    "verify": {"tentative": "verified"},
+    "dispute": {"tentative": "disputed"},
+    "reject": {
+        "pending": "rejected",
+        "disputed": "rejected",
+    },
+    "restore": {"rejected": "pending"},
+}
+
+# 需要 staff/verifier 权限的操作
+STAFF_ONLY_ACTIONS = {"verify", "reject"}
 
 
 def clean_text(value):
@@ -158,4 +176,55 @@ def create_can_submission(*, user, can_data, initial_nameplate=None, flavor=None
     can = Can.objects.create(**data)
     if initial_nameplate:
         create_initial_nameplate(can, initial_nameplate, user)
+    return can
+
+
+@transaction.atomic
+def transition_can(*, can_id: int, user, action: str, reason: str) -> Can:
+    """事务内锁定 Can 行，执行状态转换并追加审计日志。
+
+    并发语义：先提交者成功，后提交者重新读取到已变更的状态，
+    因「当前状态不在合法来源集合」抛出 BadRequestException，而不是覆盖前者。
+    注意：SQLite 不支持 SELECT ... FOR UPDATE，select_for_update 会静默降级为无锁。
+    """
+    if action not in CAN_TRANSITIONS:
+        raise BadRequestException(f"未知操作: {action}")
+
+    can = Can.objects.select_for_update().get(pk=can_id)
+
+    # 权限检查：verify/reject 仅 is_staff 或该 Can 的 verifier 可执行
+    if action in STAFF_ONLY_ACTIONS:
+        if not (user.is_staff or can.verifier == user):
+            raise ForbiddenException("您没有权限执行此操作")
+    else:
+        # submit/dispute/restore 允许创建者或 staff 操作
+        if not (user.is_staff or can.recorder == user):
+            raise ForbiddenException("您没有权限执行此操作")
+
+    # 检查状态转换是否合法
+    allowed_transitions = CAN_TRANSITIONS[action]
+    current_status = can.status
+    if current_status not in allowed_transitions:
+        raise BadRequestException(
+            f"不允许从 {current_status} 转换到 {action} 的目标状态"
+        )
+
+    new_status = allowed_transitions[current_status]
+
+    # 记录转换日志；整体赋值确保 JSONField 脏标记触发更新
+    log_entry = {
+        "from": current_status,
+        "to": new_status,
+        "by": user.id,
+        "at": timezone.now().isoformat(),
+        "reason": reason,
+    }
+    can.transition_log = list(can.transition_log) + [log_entry]
+    can.status = new_status
+
+    # verify 时设置 verifier
+    if action == "verify":
+        can.verifier = user
+
+    can.save(update_fields=["status", "transition_log", "verifier", "updated_at"])
     return can

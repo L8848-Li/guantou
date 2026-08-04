@@ -1,8 +1,10 @@
 from django.contrib.auth.models import User
 from django.test import TestCase
 from rest_framework.test import APIClient
+from utils.exceptions.types.bad_request import BadRequestException
 
 from .models import Can, Dialect, Flavor, Nameplate, NameplateSupport, Package
+from .services import transition_can
 from user.tokens import generate_token
 
 
@@ -495,6 +497,75 @@ class CanTransitionTests(TestCase):
         self.assertEqual(self.can.transition_log[0]["to"], "tentative")
         self.assertEqual(self.can.transition_log[1]["from"], "tentative")
         self.assertEqual(self.can.transition_log[1]["to"], "verified")
+
+    def test_concurrent_same_action_only_one_succeeds(self):
+        """竞争回归：同一初始状态连续执行两次相同转换，后提交者因状态已变更被拒绝"""
+        transition_can(
+            can_id=self.can.id, user=self.owner, action="submit", reason="first"
+        )
+        with self.assertRaises(BadRequestException) as ctx:
+            transition_can(
+                can_id=self.can.id, user=self.owner, action="submit", reason="second"
+            )
+        self.assertIn("不允许从 tentative 转换", str(ctx.exception))
+
+        self.can.refresh_from_db()
+        self.assertEqual(self.can.status, Can.Status.TENTATIVE)
+        # 只允许一条日志，不能丢失也不能重复
+        self.assertEqual(len(self.can.transition_log), 1)
+        log = self.can.transition_log[0]
+        self.assertEqual(log["from"], "pending")
+        self.assertEqual(log["to"], "tentative")
+        self.assertEqual(log["by"], self.owner.id)
+        self.assertEqual(log["reason"], "first")
+
+    def test_concurrent_transitions_deterministic_final_state(self):
+        """竞争回归：同一初始状态下连续两轮竞争转换，最终状态唯一确定且日志恰好两条
+
+        每轮两个竞争者同时发起相同转换，恰好一人成功、另一人得到 400；
+        两轮下来 transition_log 恰好两条，顺序与内容正确。
+
+        说明：SQLite 不支持 SELECT ... FOR UPDATE，select_for_update 会静默降级为无锁，
+        本用例以「服务层函数级」方式模拟竞争，不依赖线程级真实并发。
+        """
+        # 第一轮：pending 状态下两个竞争 submit
+        transition_can(
+            can_id=self.can.id, user=self.owner, action="submit", reason="winner"
+        )
+        with self.assertRaises(BadRequestException):
+            transition_can(
+                can_id=self.can.id, user=self.owner, action="submit", reason="loser"
+            )
+
+        # 第二轮：tentative 状态下两个竞争 verify
+        transition_can(
+            can_id=self.can.id,
+            user=self.staff_user,
+            action="verify",
+            reason="confirmed",
+        )
+        with self.assertRaises(BadRequestException):
+            transition_can(
+                can_id=self.can.id, user=self.staff_user, action="verify", reason="late"
+            )
+
+        self.can.refresh_from_db()
+        # 最终状态唯一确定
+        self.assertEqual(self.can.status, Can.Status.VERIFIED)
+        self.assertEqual(self.can.verifier, self.staff_user)
+        # transition_log 恰好两条且顺序与内容正确
+        self.assertEqual(len(self.can.transition_log), 2)
+        first, second = self.can.transition_log
+        self.assertEqual(first["from"], "pending")
+        self.assertEqual(first["to"], "tentative")
+        self.assertEqual(first["by"], self.owner.id)
+        self.assertEqual(first["reason"], "winner")
+        self.assertIn("at", first)
+        self.assertEqual(second["from"], "tentative")
+        self.assertEqual(second["to"], "verified")
+        self.assertEqual(second["by"], self.staff_user.id)
+        self.assertEqual(second["reason"], "confirmed")
+        self.assertIn("at", second)
 
 
 class IsOwnerOrAdminPermissionTests(TestCase):
