@@ -568,3 +568,38 @@ class IsOwnerOrAdminPermissionTests(TestCase):
         client = self._client_for(self.user_b)
         res = client.get(f"/cans/{self.can.id}/")
         self.assertEqual(res.status_code, 200)
+
+
+class CanViewCountTests(TestCase):
+    """罐头浏览量原子计数测试"""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username="owner", password="pw")
+        self.visitor = User.objects.create_user(username="visitor", password="pw")
+        self.dialect = Dialect.objects.create(name="莆仙方言", code="puxian")
+        self.can = Can.objects.create(
+            audio_url="https://example.com/audio.mp3",
+            recorder=self.owner,
+            dialect=self.dialect,
+            visibility=True,
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.visitor)
+
+    def test_retrieve_increments_views_atomically(self):
+        """连续两次 retrieve 后 views == 初始值 + 2，且响应中为最新值"""
+        initial = self.can.views
+        for expected in (initial + 1, initial + 2):
+            res = self.client.get(f"/cans/{self.can.id}/")
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.data["views"], expected)
+        self.can.refresh_from_db()
+        self.assertEqual(self.can.views, initial + 2)
+
+    def test_retrieve_does_not_touch_updated_at(self):
+        """浏览只更新 views，不刷新 updated_at"""
+        before = Can.objects.values_list("updated_at", flat=True).get(pk=self.can.pk)
+        res = self.client.get(f"/cans/{self.can.id}/")
+        self.assertEqual(res.status_code, 200)
+        after = Can.objects.values_list("updated_at", flat=True).get(pk=self.can.pk)
+        self.assertEqual(before, after)

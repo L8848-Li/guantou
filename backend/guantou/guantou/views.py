@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
@@ -210,8 +210,12 @@ class CanViewSet(viewsets.ModelViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
-        instance.views = instance.views + 1
-        instance.save(update_fields=["views", "updated_at"])
+        # 使用 F() 原子自增，避免并发下「先读后写」丢失计数；
+        # 只更新 views 字段，浏览量不刷新 updated_at，避免影响按更新时间排序。
+        instance.views = F("views") + 1
+        instance.save(update_fields=["views"])
+        # F() 赋值后内存值不是最新，序列化前需刷新
+        instance.refresh_from_db(fields=["views"])
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
