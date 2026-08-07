@@ -19,7 +19,7 @@ from .models import (
     Shelf,
 )
 from .permissions import IsOwnerOrAdmin
-from .services import aggregate_search
+from .services import aggregate_search, suggest_search
 from .serializers import (
     CanSerializer,
     DialectSerializer,
@@ -63,6 +63,19 @@ class AggregateSearchView(APIView):
                 "cans": CanSerializer(results["cans"], many=True, context=context).data,
             }
         )
+
+
+class SuggestSearchView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        # 联想字段少，服务层直接返回轻量 dict，不走嵌套 Serializer
+        results = suggest_search(
+            request.query_params.get("q", ""),
+            user=request.user,
+            limit=request.query_params.get("limit"),
+        )
+        return Response(results)
 
 
 class DialectViewSet(viewsets.ModelViewSet):

@@ -10,6 +10,7 @@ from .views import (
     NameplateViewSet,
     PackageViewSet,
     ShelfViewSet,
+    SuggestSearchView,
 )
 
 router = DefaultRouter()
@@ -23,5 +24,6 @@ router.register("shelves", ShelfViewSet, basename="shelf")
 
 urlpatterns = [
     path("search/", AggregateSearchView.as_view(), name="search"),
+    path("search/suggest/", SuggestSearchView.as_view(), name="search-suggest"),
     path("", include(router.urls)),
 ]

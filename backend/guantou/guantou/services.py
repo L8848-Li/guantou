@@ -1,21 +1,24 @@
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Case, IntegerField, Q, Value, When
 
 from .models import Can, Flavor, FlavorPackage, FlavorVariant, Nameplate, Package
 
 DEFAULT_SEARCH_LIMIT = 8
 MAX_SEARCH_LIMIT = 20
+SUGGEST_DEFAULT_LIMIT = 5
+SUGGEST_MAX_LIMIT = 10
+SUGGEST_KEYWORD_MAX_LENGTH = 50
 
 
 def clean_text(value):
     return str(value or "").strip()
 
 
-def result_limit(value):
+def result_limit(value, default=DEFAULT_SEARCH_LIMIT, maximum=MAX_SEARCH_LIMIT):
     try:
-        return min(max(int(value), 1), MAX_SEARCH_LIMIT)
+        return min(max(int(value), 1), maximum)
     except (TypeError, ValueError):
-        return DEFAULT_SEARCH_LIMIT
+        return default
 
 
 def visible_cans_for_user(user):
@@ -79,6 +82,92 @@ def aggregate_search(keyword, user=None, limit=DEFAULT_SEARCH_LIMIT):
         "packages": search_packages(clean_keyword, normalized_limit),
         "cans": search_cans(clean_keyword, user, normalized_limit),
     }
+
+
+def _prefix_rank(prefix_condition):
+    # 前缀匹配排 0，包含匹配排 1，保证前缀命中优先展示
+    return Case(
+        When(prefix_condition, then=Value(0)),
+        default=Value(1),
+        output_field=IntegerField(),
+    )
+
+
+def suggest_flavors(keyword, limit):
+    return (
+        Flavor.objects.filter(
+            Q(name__icontains=keyword)
+            | Q(definition__icontains=keyword)
+            | Q(mandarin__icontains=keyword)
+        )
+        .annotate(suggest_rank=_prefix_rank(Q(name__istartswith=keyword)))
+        .order_by("suggest_rank", "id")[:limit]
+    )
+
+
+def suggest_packages(keyword, limit):
+    return (
+        Package.objects.filter(text__icontains=keyword)
+        .annotate(suggest_rank=_prefix_rank(Q(text__istartswith=keyword)))
+        .order_by("suggest_rank", "id")[:limit]
+    )
+
+
+def suggest_nameplates(keyword, user, limit):
+    return (
+        Nameplate.objects.filter(can__in=visible_cans_for_user(user))
+        .filter(Q(text_content__icontains=keyword) | Q(definition__icontains=keyword))
+        .annotate(suggest_rank=_prefix_rank(Q(text_content__istartswith=keyword)))
+        .order_by("suggest_rank", "id")[:limit]
+    )
+
+
+def _flavor_suggestion(flavor):
+    mandarin = flavor.mandarin or []
+    sub = f"义项 · 普通话: {mandarin[0]}" if mandarin else "义项"
+    return {"type": "flavor", "id": flavor.id, "text": flavor.name, "sub": sub}
+
+
+def _package_suggestion(package):
+    return {"type": "package", "id": package.id, "text": package.text, "sub": "写法"}
+
+
+def _nameplate_suggestion(nameplate):
+    return {
+        "type": "nameplate",
+        "id": nameplate.id,
+        "text": nameplate.text_content,
+        "sub": f"铭牌 · 罐头 #{nameplate.can_id}",
+    }
+
+
+def suggest_search(keyword, user=None, limit=SUGGEST_DEFAULT_LIMIT):
+    clean_keyword = clean_text(keyword)[:SUGGEST_KEYWORD_MAX_LENGTH]
+    if not clean_keyword:
+        return {"keyword": "", "suggestions": []}
+
+    normalized_limit = result_limit(
+        limit, default=SUGGEST_DEFAULT_LIMIT, maximum=SUGGEST_MAX_LIMIT
+    )
+    suggestions = []
+    seen_texts = set()
+
+    def append(items, build):
+        for item in items:
+            payload = build(item)
+            # 同一文本按 flavor > package > nameplate 优先级去重
+            if payload["text"] in seen_texts:
+                continue
+            seen_texts.add(payload["text"])
+            suggestions.append(payload)
+
+    append(suggest_flavors(clean_keyword, normalized_limit), _flavor_suggestion)
+    append(suggest_packages(clean_keyword, normalized_limit), _package_suggestion)
+    append(
+        suggest_nameplates(clean_keyword, user, normalized_limit),
+        _nameplate_suggestion,
+    )
+    return {"keyword": clean_keyword, "suggestions": suggestions}
 
 
 def get_or_create_package(label):

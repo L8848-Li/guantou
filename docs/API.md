@@ -21,6 +21,7 @@
 - `GET/POST /nameplates/`
 - `GET/POST /shelves/`
 - `GET /search/`
+- `GET /search/suggest/`
 - `/users...`
 - `/login...`
 - `/announcements...`
@@ -224,3 +225,31 @@ GET /search/?q=膝盖&limit=8
 ```
 
 返回 `flavors`、`packages`、`cans` 三组结果。它不会改变外键检索方式；单资源筛选仍走 `/flavors/?package=...`、`/cans/?flavor=...` 等资源列表参数。
+
+## 搜索联想
+
+为搜索框聚焦态与实时联想提供轻量建议接口（防抖由前端自行处理）：
+
+```http
+GET /search/suggest/?q=吃&limit=5
+```
+
+参数：
+
+- `q`：strip 后为空返回空建议（不报错）；超过 50 字符截断。
+- `limit`：每类条数上限，默认 5，clamp 到 1~10；非数字回退默认值。
+
+建议来源三类：`flavor`（义项，匹配 name/definition/mandarin）、`package`（写法，匹配 text）、`nameplate`（铭牌，匹配 text_content/definition，仅返回挂在可见罐头上的铭牌，可见性规则同 `/cans/` 列表）。同一文本按 flavor > package > nameplate 优先级去重，前缀匹配排在包含匹配之前。
+
+响应示例：
+
+```json
+{
+  "keyword": "吃",
+  "suggestions": [
+    { "type": "flavor", "id": 3, "text": "吃早饭", "sub": "义项 · 普通话: 吃早饭" },
+    { "type": "package", "id": 11, "text": "食", "sub": "写法" },
+    { "type": "nameplate", "id": 42, "text": "食", "sub": "铭牌 · 罐头 #17" }
+  ]
+}
+```
