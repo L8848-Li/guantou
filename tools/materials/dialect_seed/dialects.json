@@ -1,0 +1,261 @@
+[
+  {
+    "code": "han",
+    "name": "汉语",
+    "parent": null,
+    "region_level": "family",
+    "description": "种子骨架根节点，分区框架参考《中国语言地图集》，仅用于前后端联调，不追求学术级完整分区。"
+  },
+  {
+    "code": "min",
+    "name": "闽语",
+    "parent": "han",
+    "region_level": "dialect",
+    "province": "福建",
+    "description": "闽语总节点，内部通常分为闽南、闽东、莆仙、闽北、闽中诸片。"
+  },
+  {
+    "code": "xinghua",
+    "name": "兴化方言（莆仙闽语）",
+    "parent": "min",
+    "region_level": "dialect",
+    "province": "福建",
+    "city": "莆田",
+    "description": "又称莆仙话、兴化话，通行于莆田市、仙游县全境及泉港区、福清市部分地区，习惯上分为莆田、仙游两片。"
+  },
+  {
+    "code": "putian-pian",
+    "name": "莆田片",
+    "parent": "xinghua",
+    "region_level": "area",
+    "province": "福建",
+    "city": "莆田",
+    "description": "以莆田城区荔城话为代表，俗称莆田腔。"
+  },
+  {
+    "code": "xianyou-pian",
+    "name": "仙游片",
+    "parent": "xinghua",
+    "region_level": "area",
+    "province": "福建",
+    "city": "莆田",
+    "description": "以仙游城区鲤城话为代表，俗称仙游腔，保留较多鼻化韵母。"
+  },
+  {
+    "code": "putian",
+    "name": "莆田",
+    "parent": "putian-pian",
+    "region_level": "county",
+    "province": "福建",
+    "city": "莆田",
+    "county": "莆田",
+    "description": "莆田城关及周边方言点。"
+  },
+  {
+    "code": "hanjiang",
+    "name": "涵江",
+    "parent": "putian-pian",
+    "region_level": "county",
+    "province": "福建",
+    "city": "莆田",
+    "county": "涵江",
+    "description": "涵江区方言点，存在江口腔等口音差异。"
+  },
+  {
+    "code": "xianyou",
+    "name": "仙游",
+    "parent": "xianyou-pian",
+    "region_level": "county",
+    "province": "福建",
+    "city": "莆田",
+    "county": "仙游",
+    "description": "仙游县方言点。"
+  },
+  {
+    "code": "youyang",
+    "name": "游洋",
+    "parent": "xianyou",
+    "region_level": "town",
+    "province": "福建",
+    "city": "莆田",
+    "county": "仙游",
+    "town": "游洋",
+    "description": "仙游县游洋镇方言点。"
+  },
+  {
+    "code": "min-nan",
+    "name": "闽南语",
+    "parent": "min",
+    "region_level": "dialect",
+    "province": "福建",
+    "description": "分布于福建南部、广东潮汕、台湾及东南亚等地。"
+  },
+  {
+    "code": "quanzhang-pian",
+    "name": "泉漳片",
+    "parent": "min-nan",
+    "region_level": "area",
+    "province": "福建",
+    "description": "闽南语泉漳小片。"
+  },
+  {
+    "code": "quanzhou",
+    "name": "泉州",
+    "parent": "quanzhang-pian",
+    "region_level": "county",
+    "province": "福建",
+    "city": "泉州",
+    "county": "泉州",
+    "description": "泉州方言点。"
+  },
+  {
+    "code": "xiamen",
+    "name": "厦门",
+    "parent": "quanzhang-pian",
+    "region_level": "county",
+    "province": "福建",
+    "city": "厦门",
+    "county": "厦门",
+    "description": "厦门方言点。"
+  },
+  {
+    "code": "chaoshan-pian",
+    "name": "潮汕片",
+    "parent": "min-nan",
+    "region_level": "area",
+    "province": "广东",
+    "description": "闽南语潮汕小片，跨省分布示例。"
+  },
+  {
+    "code": "chaozhou",
+    "name": "潮州",
+    "parent": "chaoshan-pian",
+    "region_level": "county",
+    "province": "广东",
+    "city": "潮州",
+    "county": "潮州",
+    "description": "潮州方言点。"
+  },
+  {
+    "code": "min-dong",
+    "name": "闽东语",
+    "parent": "min",
+    "region_level": "dialect",
+    "province": "福建",
+    "description": "以福州话为代表。"
+  },
+  {
+    "code": "houguan-pian",
+    "name": "侯官片",
+    "parent": "min-dong",
+    "region_level": "area",
+    "province": "福建",
+    "description": "闽东语侯官小片。"
+  },
+  {
+    "code": "fuzhou",
+    "name": "福州",
+    "parent": "houguan-pian",
+    "region_level": "county",
+    "province": "福建",
+    "city": "福州",
+    "county": "福州",
+    "description": "福州方言点。"
+  },
+  {
+    "code": "min-bei",
+    "name": "闽北语",
+    "parent": "min",
+    "region_level": "dialect",
+    "province": "福建",
+    "description": "分布于南平一带，骨架节点。"
+  },
+  {
+    "code": "min-zhong",
+    "name": "闽中语",
+    "parent": "min",
+    "region_level": "dialect",
+    "province": "福建",
+    "description": "分布于三明一带，骨架节点。"
+  },
+  {
+    "code": "wu",
+    "name": "吴语",
+    "parent": "han",
+    "region_level": "dialect",
+    "province": "浙江",
+    "description": "骨架节点。"
+  },
+  {
+    "code": "yue",
+    "name": "粤语",
+    "parent": "han",
+    "region_level": "dialect",
+    "province": "广东",
+    "description": "骨架节点。"
+  },
+  {
+    "code": "yuehai-pian",
+    "name": "粤海片",
+    "parent": "yue",
+    "region_level": "area",
+    "province": "广东",
+    "description": "粤语粤海小片。"
+  },
+  {
+    "code": "guangzhou",
+    "name": "广州",
+    "parent": "yuehai-pian",
+    "region_level": "county",
+    "province": "广东",
+    "city": "广州",
+    "county": "广州",
+    "description": "广州方言点。"
+  },
+  {
+    "code": "hakka",
+    "name": "客家话",
+    "parent": "han",
+    "region_level": "dialect",
+    "description": "骨架节点。"
+  },
+  {
+    "code": "xiang",
+    "name": "湘语",
+    "parent": "han",
+    "region_level": "dialect",
+    "province": "湖南",
+    "description": "骨架节点。"
+  },
+  {
+    "code": "gan",
+    "name": "赣语",
+    "parent": "han",
+    "region_level": "dialect",
+    "province": "江西",
+    "description": "骨架节点。"
+  },
+  {
+    "code": "jin",
+    "name": "晋语",
+    "parent": "han",
+    "region_level": "dialect",
+    "province": "山西",
+    "description": "骨架节点。"
+  },
+  {
+    "code": "hui",
+    "name": "徽语",
+    "parent": "han",
+    "region_level": "dialect",
+    "province": "安徽",
+    "description": "骨架节点。"
+  },
+  {
+    "code": "mandarin",
+    "name": "官话",
+    "parent": "han",
+    "region_level": "dialect",
+    "description": "官话大区骨架节点，暂不展开。"
+  }
+]

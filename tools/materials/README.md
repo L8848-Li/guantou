@@ -7,6 +7,7 @@
 - `common/`：跨方言可复用的小工具，例如文本清洗、字段标准化、CSV/XLSX/JSON 辅助。
 - `puxian/`：莆仙话专属处理逻辑，例如莆仙话拼音、IPA、声母韵母声调拆分。
 - `puxian/legacy/`：旧莆仙词典 Excel/音频批处理脚本，只作为历史材料处理参考。
+- `dialect_seed/`：方言点（`Dialect`）种子数据与幂等导入脚本，见目录内 README。
 - `tests/`：可稳定运行的纯函数测试。legacy 脚本没有 fixture 时不进入 CI。
 
 ## 运行测试
