@@ -2,7 +2,15 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from .models import Can, Dialect, Flavor, Nameplate, NameplateSupport, Package
+from .models import (
+    Can,
+    Dialect,
+    Flavor,
+    FlavorVariant,
+    Nameplate,
+    NameplateSupport,
+    Package,
+)
 from user.tokens import generate_token
 
 
@@ -603,3 +611,271 @@ class CanViewCountTests(TestCase):
         self.assertEqual(res.status_code, 200)
         after = Can.objects.values_list("updated_at", flat=True).get(pk=self.can.pk)
         self.assertEqual(before, after)
+
+
+class CanSubmissionContractTests(TestCase):
+    """POST /cans/ 装罐提交端到端 API 契约测试（#97）
+
+    通过 DRF APIClient 走真实路由，以现行 CanSerializer 输出为契约基准：
+    断言字段名与类型，防止前后端联调前的契约漂移。
+    """
+
+    # POST /cans/ 成功响应必须包含的契约字段
+    CAN_CONTRACT_FIELDS = (
+        "id",
+        "audio_url",
+        "dialect",
+        "concept_text",
+        "status",
+        "duration_ms",
+        "nameplates",
+        "primary_nameplate",
+        "flavor_variant",
+    )
+    CAN_STATUSES = {choice[0] for choice in Can.Status.choices}
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="canner", password="pw")
+        self.dialect = Dialect.objects.create(name="莆仙方言", code="puxian")
+        self.flavor = Flavor.objects.create(
+            name="行走", definition="走路", created_by=self.user
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def _assert_can_contract(self, data):
+        """断言响应包含契约字段且类型正确"""
+        for field in self.CAN_CONTRACT_FIELDS:
+            self.assertIn(field, data)
+        self.assertIsInstance(data["id"], int)
+        self.assertIsInstance(data["audio_url"], str)
+        self.assertIsInstance(data["concept_text"], str)
+        self.assertIsInstance(data["duration_ms"], int)
+        self.assertIsInstance(data["nameplates"], list)
+        self.assertIn(data["status"], self.CAN_STATUSES)
+        self.assertTrue(data["dialect"] is None or isinstance(data["dialect"], int))
+        self.assertTrue(
+            data["flavor_variant"] is None or isinstance(data["flavor_variant"], int)
+        )
+        self.assertTrue(
+            data["primary_nameplate"] is None
+            or isinstance(data["primary_nameplate"], dict)
+        )
+
+    def _assert_unified_error_shape(self, response, code):
+        """断言错误响应符合统一 shape：msg/message/code/details/request_id"""
+        for field in ("msg", "message", "code", "details", "request_id"):
+            self.assertIn(field, response.data)
+        self.assertEqual(response.data["code"], code)
+        self.assertEqual(response.data["request_id"], "contract-request-id")
+        self.assertEqual(response["X-Request-ID"], "contract-request-id")
+
+    def test_submit_free_canning_without_nameplate(self):
+        """自由装罐（无铭牌）→ 201，status == unlabeled"""
+        response = self.client.post(
+            "/cans/",
+            {
+                "audio_url": "https://example.com/free.mp3",
+                "dialect": self.dialect.id,
+                "concept_text": "膝盖",
+                "duration_ms": 1500,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self._assert_can_contract(response.data)
+        self.assertEqual(response.data["status"], Can.Status.UNLABELED)
+        self.assertEqual(response.data["duration_ms"], 1500)
+        self.assertEqual(response.data["nameplates"], [])
+        self.assertIsNone(response.data["primary_nameplate"])
+        self.assertIsNone(response.data["flavor_variant"])
+        self.assertEqual(response.data["recorder"]["id"], self.user.id)
+
+    def test_submit_free_canning_with_initial_nameplate(self):
+        """带 initial_nameplate 自由装罐 → 201，铭牌提升为主铭牌，unlabeled→pending 自动推进"""
+        response = self.client.post(
+            "/cans/",
+            {
+                "audio_url": "https://example.com/labeled.mp3",
+                "dialect": self.dialect.id,
+                "concept_text": "走路",
+                "initial_nameplate": {
+                    "text_content": "行",
+                    "definition": "走路",
+                    "package_type": Package.PackageType.ORTHODOX,
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self._assert_can_contract(response.data)
+        self.assertEqual(response.data["status"], Can.Status.PENDING)
+        self.assertEqual(len(response.data["nameplates"]), 1)
+        primary = response.data["primary_nameplate"]
+        self.assertIsNotNone(primary)
+        self.assertTrue(primary["is_primary"])
+        self.assertEqual(primary["text_content"], "行")
+        # 铭牌连带创建 Package/Flavor 并落库
+        can = Can.objects.get(id=response.data["id"])
+        plate = can.nameplates.get()
+        self.assertTrue(plate.is_primary)
+        self.assertEqual(plate.creator, self.user)
+        self.assertIsNotNone(plate.package)
+        self.assertIsNotNone(plate.flavor)
+
+    def test_submit_repeated_nameplate_text_does_not_duplicate_package(self):
+        """重复提交相同写法文本 → Package 按 get_or_create 语义复用，不重复创建"""
+        payload = {
+            "audio_url": "https://example.com/dup.mp3",
+            "dialect": self.dialect.id,
+            "concept_text": "走路",
+            "initial_nameplate": {
+                "text_content": "行",
+                "definition": "走路",
+                "package_type": Package.PackageType.ORTHODOX,
+            },
+        }
+        first = self.client.post("/cans/", payload, format="json")
+        second = self.client.post("/cans/", payload, format="json")
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 201)
+        self.assertEqual(
+            Package.objects.filter(
+                text="行", package_type=Package.PackageType.ORTHODOX
+            ).count(),
+            1,
+        )
+
+    def test_submit_repeated_nameplate_text_creates_new_flavor_each_time(self):
+        """现状固化：初始铭牌每次提交都新建 Flavor，未复用既有义项。
+
+        与 #97 期望的 get_or_create 复用语义存在偏差，如需改为复用请单独开 issue，
+        修复后本用例应改为断言 Flavor 计数不变。
+        """
+        payload = {
+            "audio_url": "https://example.com/dup.mp3",
+            "dialect": self.dialect.id,
+            "concept_text": "走路",
+            "initial_nameplate": {
+                "text_content": "行",
+                "definition": "走路",
+                "package_type": Package.PackageType.ORTHODOX,
+            },
+        }
+        first = self.client.post("/cans/", payload, format="json")
+        second = self.client.post("/cans/", payload, format="json")
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 201)
+        first_flavor = first.data["nameplates"][0]["flavor"]
+        second_flavor = second.data["nameplates"][0]["flavor"]
+        self.assertIsNotNone(first_flavor)
+        self.assertIsNotNone(second_flavor)
+        self.assertNotEqual(first_flavor, second_flavor)
+
+    def test_submit_supplement_recording_for_existing_flavor(self):
+        """补录音传 flavor id → 201，flavor_variant 自动创建，concept_text 回填义项名称"""
+        response = self.client.post(
+            "/cans/",
+            {
+                "audio_url": "https://example.com/variant.mp3",
+                "dialect": self.dialect.id,
+                "flavor": self.flavor.id,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self._assert_can_contract(response.data)
+        self.assertIsNotNone(response.data["flavor_variant"])
+        self.assertEqual(response.data["concept_text"], self.flavor.name)
+        variant = FlavorVariant.objects.get(id=response.data["flavor_variant"])
+        self.assertEqual(variant.flavor, self.flavor)
+        self.assertEqual(variant.dialect, self.dialect)
+        self.assertEqual(variant.audio_url, "https://example.com/variant.mp3")
+        self.assertEqual(variant.audio_source, FlavorVariant.AudioSource.USER)
+        self.assertEqual(variant.created_by, self.user)
+
+    def test_submit_with_initial_nameplate_and_flavor_combined(self):
+        """initial_nameplate 与 flavor 同时传入 → 两者均生效（现行实现无歧义）"""
+        response = self.client.post(
+            "/cans/",
+            {
+                "audio_url": "https://example.com/combined.mp3",
+                "dialect": self.dialect.id,
+                "flavor": self.flavor.id,
+                "initial_nameplate": {
+                    "text_content": "行",
+                    "definition": "走路",
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self._assert_can_contract(response.data)
+        # flavor 路径：变体创建且 concept_text 回填
+        self.assertIsNotNone(response.data["flavor_variant"])
+        self.assertEqual(response.data["concept_text"], self.flavor.name)
+        # 初始铭牌路径：铭牌创建并提升，状态推进到 pending
+        self.assertEqual(response.data["status"], Can.Status.PENDING)
+        self.assertEqual(len(response.data["nameplates"]), 1)
+        self.assertTrue(response.data["primary_nameplate"]["is_primary"])
+
+    def test_submit_without_authentication_returns_401(self):
+        """未登录提交 → 401，错误响应符合统一 shape"""
+        anon = APIClient()
+        response = anon.post(
+            "/cans/",
+            {
+                "audio_url": "https://example.com/anon.mp3",
+                "concept_text": "膝盖",
+            },
+            format="json",
+            HTTP_X_REQUEST_ID="contract-request-id",
+        )
+        self.assertEqual(response.status_code, 401)
+        self._assert_unified_error_shape(response, "not_authenticated")
+
+    def test_submit_missing_audio_url_returns_400(self):
+        """缺少必填 audio_url → 400，details 指明字段，错误 shape 统一"""
+        response = self.client.post(
+            "/cans/",
+            {"concept_text": "膝盖"},
+            format="json",
+            HTTP_X_REQUEST_ID="contract-request-id",
+        )
+        self.assertEqual(response.status_code, 400)
+        self._assert_unified_error_shape(response, "validation_error")
+        self.assertIn("audio_url", response.data["details"])
+
+    def test_submit_invalid_dialect_returns_400(self):
+        """非法 dialect 主键 → 400，错误 shape 统一"""
+        response = self.client.post(
+            "/cans/",
+            {
+                "audio_url": "https://example.com/bad-dialect.mp3",
+                "dialect": 999999,
+            },
+            format="json",
+            HTTP_X_REQUEST_ID="contract-request-id",
+        )
+        self.assertEqual(response.status_code, 400)
+        self._assert_unified_error_shape(response, "validation_error")
+        self.assertIn("dialect", response.data["details"])
+
+    def test_submit_without_concept_text_and_flavor_current_behavior(self):
+        """现状固化：concept_text 与 flavor 均缺失时返回 201 无标罐头。
+
+        #97 口径原期望 400；如契约需收紧为必填其一，请单独开 issue，
+        修复后本用例应改为断言 400。
+        """
+        response = self.client.post(
+            "/cans/",
+            {
+                "audio_url": "https://example.com/bare.mp3",
+                "dialect": self.dialect.id,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self._assert_can_contract(response.data)
+        self.assertEqual(response.data["status"], Can.Status.UNLABELED)
+        self.assertEqual(response.data["concept_text"], "")
