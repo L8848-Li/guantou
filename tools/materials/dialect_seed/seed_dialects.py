@@ -1,6 +1,6 @@
 """方言点种子数据导入脚本。
 
-从结构化源文件（JSON/CSV）读取方言点层级数据，按「名称 + 父级」幂等写入
+从结构化源文件（JSON/CSV）读取方言点层级数据，按「父级 + code」幂等写入
 ``Dialect`` 表，供装罐页方言选择器、罐头列表过滤与搜索联想联调使用。
 
 数据约定（与 v1 契约 docs/api/v1/openapi.yaml 的 ``DialectWrite`` 对齐）：
@@ -30,15 +30,20 @@ import re
 import sys
 from pathlib import Path
 
-# 与 guantou.models.Dialect.RegionLevel 保持一致；离线脚本不导入 Django 模型。
-REGION_LEVELS = ("family", "dialect", "area", "county", "town", "community")
-
-OPTIONAL_TEXT_FIELDS = ("province", "city", "county", "town", "description")
-
 # 与 v1 契约 DialectWrite.code 的 pattern 一致：不含点号、斜杠和空白。
 _CODE_PATTERN = re.compile(r"[./\s]")
 _CODE_MAX_LENGTH = 32
 _QUALIFIED_SEPARATOR = "."
+_ALLOWED_FIELDS = {
+    "key",
+    "code",
+    "name",
+    "parent",
+    "sort_order",
+    "description",
+    "aliases",
+    "external_refs",
+}
 
 
 class SeedError(ValueError):
@@ -87,6 +92,9 @@ def _normalize(raw):
     """把一条原始记录规范化，返回 (record, reason)。reason 非空表示失败。"""
     if not isinstance(raw, dict):
         return None, "记录必须是对象/行"
+    unknown_fields = sorted(set(raw) - _ALLOWED_FIELDS)
+    if unknown_fields:
+        return None, f"包含不支持的字段: {', '.join(unknown_fields)}"
     name = _clean(raw.get("name"))
     if not name:
         return None, "缺少名称"
@@ -102,20 +110,29 @@ def _normalize(raw):
         return {"name": name}, f"编码含非法字符（点号/斜杠/空白）: {code}"
     if len(code) > _CODE_MAX_LENGTH:
         return {"name": name}, f"编码超过 {_CODE_MAX_LENGTH} 字符: {code}"
-    level = _clean(raw.get("region_level")) or "dialect"
-    if level not in REGION_LEVELS:
-        return {"name": name}, f"层级取值非法: {level}"
+    sort_order = raw.get("sort_order", 0)
+    try:
+        sort_order = int(sort_order or 0)
+    except (TypeError, ValueError):
+        return {"name": name}, f"sort_order 必须是整数: {sort_order}"
+    aliases = raw.get("aliases", [])
+    if not isinstance(aliases, list) or not all(
+        isinstance(alias, str) for alias in aliases
+    ):
+        return {"name": name}, "aliases 必须是字符串数组"
+    external_refs = raw.get("external_refs", {})
+    if not isinstance(external_refs, dict):
+        return {"name": name}, "external_refs 必须是对象"
     record = {
         "key": key,
         "code": code,
         "name": name,
         "parent": _clean(raw.get("parent")) or None,
-        "region_level": level,
+        "sort_order": sort_order,
+        "description": _clean(raw.get("description")),
+        "aliases": [_clean(alias) for alias in aliases if _clean(alias)],
+        "external_refs": external_refs,
     }
-    for field in OPTIONAL_TEXT_FIELDS:
-        record[field] = _clean(raw.get(field))
-    metadata = raw.get("metadata")
-    record["metadata"] = metadata if isinstance(metadata, dict) else {}
     return record, None
 
 
@@ -139,7 +156,7 @@ def _classify_pending(record, pending, known_qualified):
 def validate_records(records, known_parent_qualified=()):
     """校验并拓扑排序记录，返回 ``(有序记录, failed 列表)``。
 
-    - 缺少名称/source key/编码、编码含非法字符、层级取值非法 → failed；
+    - 缺少名称/source key/编码、编码含非法字符、字段类型错误 → failed；
     - source key 在输入内重复 → failed；
     - 同一父级下编码重复、同父级重名 → failed（不同分支允许相同短码）；
     - 父级既不是输入内的 source key，也不在 ``known_parent_qualified``
@@ -281,18 +298,8 @@ def seed_records(ordered, dialect_model, dry_run=False):
                 )
                 continue
             if isinstance(parent, _PlannedNode):
-                # 父级只在计划中（dry-run 未落库），子级的「名称 + 父级」必然
-                # 不存在；但 code 在库级仍受唯一约束，需要与真实写入路径一致
-                # 的占用预检，否则 dry-run 会对真实执行必然失败的记录误报
-                # created。
-                if dialect_model.objects.filter(code=record["code"]).exists():
-                    report["failed"].append(
-                        {
-                            "name": record["name"],
-                            "reason": f"编码已被占用: {record['code']}",
-                        }
-                    )
-                    continue
+                # 父级尚未落库时，库中不可能存在它的同级子节点；
+                # 跨分支同码是 v1 的合法情况，不做全局 code 预检。
                 report["created"] += 1
                 planned = _PlannedNode(record["key"], qualified_by_key[record["key"]])
                 resolved[record["key"]] = planned
@@ -300,31 +307,39 @@ def seed_records(ordered, dialect_model, dry_run=False):
                 continue
 
         defaults = {
-            "code": record["code"],
-            "region_level": record["region_level"],
-            "province": record["province"],
-            "city": record["city"],
-            "county": record["county"],
-            "town": record["town"],
+            "name": record["name"],
+            "sort_order": record["sort_order"],
             "description": record["description"],
-            "metadata": record["metadata"],
+            "aliases": record["aliases"],
+            "external_refs": record["external_refs"],
         }
-        if dry_run:
-            existing = dialect_model.objects.filter(
-                name=record["name"], parent=parent
-            ).first()
-            if existing is not None:
-                report["skipped"] += 1
-                resolved[record["key"]] = existing
-                continue
-            if dialect_model.objects.filter(code=record["code"]).exists():
+        existing = dialect_model.objects.filter(
+            parent=parent, code=record["code"]
+        ).first()
+        if existing is not None:
+            if existing.name != record["name"]:
                 report["failed"].append(
                     {
                         "name": record["name"],
-                        "reason": f"编码已被占用: {record['code']}",
+                        "reason": f"同级编码已由其它名称占用: {record['code']}",
                     }
                 )
                 continue
+            report["skipped"] += 1
+            resolved[record["key"]] = existing
+            continue
+        name_conflict = dialect_model.objects.filter(
+            parent=parent, name=record["name"]
+        ).first()
+        if name_conflict is not None:
+            report["failed"].append(
+                {
+                    "name": record["name"],
+                    "reason": f"同级名称已使用其它编码: {name_conflict.code}",
+                }
+            )
+            continue
+        if dry_run:
             report["created"] += 1
             planned = _PlannedNode(record["key"], qualified_by_key[record["key"]])
             resolved[record["key"]] = planned
@@ -334,11 +349,22 @@ def seed_records(ordered, dialect_model, dry_run=False):
         try:
             with transaction.atomic():
                 obj, created = dialect_model.objects.get_or_create(
-                    name=record["name"], parent=parent, defaults=defaults
+                    parent=parent, code=record["code"], defaults=defaults
                 )
         except IntegrityError:
             report["failed"].append(
-                {"name": record["name"], "reason": f"编码已被占用: {record['code']}"}
+                {
+                    "name": record["name"],
+                    "reason": f"同级编码或根编码冲突: {record['code']}",
+                }
+            )
+            continue
+        if not created and obj.name != record["name"]:
+            report["failed"].append(
+                {
+                    "name": record["name"],
+                    "reason": f"同级编码已由其它名称占用: {record['code']}",
+                }
             )
             continue
         report["created" if created else "skipped"] += 1

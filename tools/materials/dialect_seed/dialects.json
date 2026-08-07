@@ -4,152 +4,119 @@
     "code": "闽",
     "name": "闽语",
     "parent": null,
-    "region_level": "dialect",
-    "province": "福建",
-    "description": "闽语大区根节点，内部分为莆仙、闽东、闽南诸片，分区框架参考《中国语言地图集》，仅用于联调。"
+    "sort_order": 10,
+    "description": "闽语根节点，下挂项目已需要的莆仙、闽东和闽南分支。"
   },
   {
     "key": "puxian",
     "code": "莆仙",
     "name": "莆仙片（兴化方言）",
     "parent": "min",
-    "region_level": "area",
-    "province": "福建",
-    "city": "莆田",
-    "description": "又称兴化方言、莆仙话，通行于莆田市、仙游县全境及泉港区、福清市部分地区。限定码：闽.莆仙。"
+    "sort_order": 10,
+    "description": "又称兴化方言、莆仙话，通行于莆田市、仙游县全境及周边部分地区。"
   },
   {
     "key": "putian",
     "code": "莆田",
     "name": "莆田",
     "parent": "puxian",
-    "region_level": "county",
-    "province": "福建",
-    "city": "莆田",
-    "county": "莆田",
-    "description": "莆田城关及周边方言点，以荔城话为代表，俗称莆田腔。限定码：闽.莆仙.莆田。"
+    "sort_order": 10,
+    "description": "莆田城关及周边方言点，以荔城话为代表，俗称莆田腔。"
   },
   {
     "key": "hanjiang",
     "code": "涵江",
     "name": "涵江",
     "parent": "putian",
-    "region_level": "county",
-    "province": "福建",
-    "city": "莆田",
-    "county": "涵江",
-    "description": "涵江区方言点，存在江口腔等口音差异。限定码：闽.莆仙.莆田.涵江。"
+    "sort_order": 10,
+    "description": "涵江区方言点，存在江口腔等口音差异。"
   },
   {
     "key": "xianyou",
     "code": "仙游",
     "name": "仙游",
     "parent": "puxian",
-    "region_level": "county",
-    "province": "福建",
-    "city": "莆田",
-    "county": "仙游",
-    "description": "仙游县方言点，以鲤城话为代表，俗称仙游腔，保留较多鼻化韵母。限定码：闽.莆仙.仙游。"
+    "sort_order": 20,
+    "description": "仙游县方言点，以鲤城话为代表，俗称仙游腔。"
   },
   {
     "key": "youyang",
     "code": "游洋",
     "name": "游洋",
     "parent": "xianyou",
-    "region_level": "town",
-    "province": "福建",
-    "city": "莆田",
-    "county": "仙游",
-    "town": "游洋",
-    "description": "仙游县游洋镇方言点。限定码：闽.莆仙.仙游.游洋。"
+    "sort_order": 10,
+    "description": "仙游县游洋镇方言点。"
   },
   {
     "key": "mindong",
     "code": "闽东",
     "name": "闽东片",
     "parent": "min",
-    "region_level": "area",
-    "province": "福建",
-    "description": "以福州话为代表。限定码：闽.闽东。"
+    "sort_order": 20,
+    "description": "闽东语分支，以福州话为代表。"
   },
   {
     "key": "houguan",
     "code": "侯官",
     "name": "侯官片",
     "parent": "mindong",
-    "region_level": "area",
-    "province": "福建",
-    "description": "闽东语侯官小片。限定码：闽.闽东.侯官。"
+    "sort_order": 10,
+    "description": "闽东语侯官小片。"
   },
   {
     "key": "fuzhou",
     "code": "福州",
     "name": "福州",
     "parent": "houguan",
-    "region_level": "county",
-    "province": "福建",
-    "city": "福州",
-    "county": "福州",
-    "description": "福州方言点。限定码：闽.闽东.侯官.福州。"
+    "sort_order": 10,
+    "description": "福州方言点。"
   },
   {
     "key": "minnan",
     "code": "闽南",
     "name": "闽南片",
     "parent": "min",
-    "region_level": "area",
-    "province": "福建",
-    "description": "分布于福建南部、广东潮汕、台湾及东南亚等地。限定码：闽.闽南。"
+    "sort_order": 30,
+    "description": "闽南语分支，分布于福建南部、广东潮汕、台湾及东南亚等地。"
   },
   {
     "key": "quanzhang",
     "code": "泉漳",
     "name": "泉漳片",
     "parent": "minnan",
-    "region_level": "area",
-    "province": "福建",
-    "description": "闽南语泉漳小片。限定码：闽.闽南.泉漳。"
+    "sort_order": 10,
+    "description": "闽南语泉漳小片。"
   },
   {
     "key": "quanzhou",
     "code": "泉州",
     "name": "泉州",
     "parent": "quanzhang",
-    "region_level": "county",
-    "province": "福建",
-    "city": "泉州",
-    "county": "泉州",
-    "description": "泉州方言点。限定码：闽.闽南.泉漳.泉州。"
+    "sort_order": 10,
+    "description": "泉州方言点。"
   },
   {
     "key": "xiamen",
     "code": "厦门",
     "name": "厦门",
     "parent": "quanzhang",
-    "region_level": "county",
-    "province": "福建",
-    "city": "厦门",
-    "county": "厦门",
-    "description": "厦门方言点。限定码：闽.闽南.泉漳.厦门。"
+    "sort_order": 20,
+    "description": "厦门方言点。"
   },
   {
     "key": "chaoshan",
     "code": "潮汕",
     "name": "潮汕片",
     "parent": "minnan",
-    "region_level": "area",
-    "province": "广东",
-    "description": "闽南语潮汕小片，跨省分布示例。限定码：闽.闽南.潮汕。"
+    "sort_order": 20,
+    "description": "闽南语潮汕小片，作为跨省分布示例。"
   },
   {
     "key": "chaozhou",
     "code": "潮州",
     "name": "潮州",
     "parent": "chaoshan",
-    "region_level": "county",
-    "province": "广东",
-    "city": "潮州",
-    "county": "潮州",
-    "description": "潮州方言点。限定码：闽.闽南.潮汕.潮州。"
+    "sort_order": 10,
+    "description": "潮州方言点。"
   }
 ]

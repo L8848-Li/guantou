@@ -1,99 +1,68 @@
-# 方言点种子数据（dialect_seed）
+# 方言点种子数据
 
-为 `Dialect` 表提供可重复执行的多层级方言树种子数据，支撑装罐页方言选择器、
-罐头列表方言过滤与搜索联想联调。脚本只补数据，不改 `Dialect` 模型与
-`DialectSerializer` 输出。
+本目录为 v1 `Dialect` 按需父子树提供可重复执行的联调数据。树只按实际需要展开，不为填满固定层级而创建空节点。
 
-> 目录名用下划线 `dialect_seed` 而非连字符：脚本需要被
-> `python -m tools.materials.dialect_seed.seed_dialects` 启动，且纯函数部分要
-> 被 `tools/materials/tests/` 以包路径导入，连字符目录两者都不支持。
+## 数据口径
 
-## 文件
-
-- `dialects.json`：种子源数据，数组形式，父级在前可读性好但非必需。
-- `seed_dialects.py`：幂等导入脚本，依赖 Django ORM，不进 Django app 运行路径。
-
-## 数据来源与口径
-
-- 种子树只保留闽语一支：闽 → 莆仙/闽东/闽南 → 各方言点，重点路径精确
-  形成限定码 `闽.莆仙.仙游.游洋`。
-- 莆仙片（兴化方言）含莆田、仙游两个方言点，参考《莆田市志》方言篇：
-  通行于原莆田县境内的称莆田话，通行于仙游县境内的称仙游话。游洋镇隶属
-  仙游县，故“游洋”方言点挂在仙游之下。
-- 闽东/闽南（含潮汕跨省示例）作为可区分的地方话保留；不再预建吴、粤、
-  客家等无实际方言点的大区骨架，也不为填满省/市/县/镇层级而建节点
-  （ADR-0001：节点按有证据的实际需求创建，地区名只有代表可区分的地方话
-  时才进入方言树）。
+- 种子树仅保留当前联调需要的闽语分支，重点路径为 `闽.莆仙.仙游.游洋`。
+- `code` 是同级唯一的中文短码；不同分支可以使用相同短码。
+- 树本身表达语言关系与按需粒度，无须额外的层级类型或行政区划字段。
+- 莆仙分支参考《莆田市志》方言篇，闽语分片框架参考《中国语言地图集》。这是联调骨架，不是学术级完整分区。
 
 ## 输入格式
 
-JSON 数组或 CSV（列名同字段名），字段：
+`dialects.json` 或自定义 JSON/CSV 使用以下字段：
 
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
-| `key` | 是 | source key，文件内唯一，作为无歧义的父级引用标识 |
-| `code` | 是 | 同级唯一短码，默认社区熟悉的中文简称（对应 `Dialect.code`）；不允许点号/斜杠/空白，长度 ≤ 32 |
-| `name` | 是 | 名称 |
-| `parent` | 否 | 同文件内某条记录的 `key`，或已落库节点的完整限定码（断点续跑/增量导入）；空表示根节点 |
-| `region_level` | 否 | `family/dialect/area/county/town/community`，缺省 `dialect` |
-| `province/city/county/town/description` | 否 | 文本字段 |
-| `metadata` | 否 | JSON 对象（仅 JSON 输入） |
+| `key` | 是 | 仅在输入文件内使用的稳定 source key |
+| `code` | 是 | 同级唯一短码，不得含点、斜杠或空白，最长 32 字符 |
+| `name` | 是 | 展示名称 |
+| `parent` | 否 | 文件内父节点 `key`，或已落库父节点的完整限定码 |
+| `sort_order` | 否 | 同级人工顺序，默认 0；随附数据按 10 的倍数留出插入空间 |
+| `description` | 否 | 方言点说明 |
+| `aliases` | 否 | 历史完整限定码数组，默认空数组 |
+| `external_refs` | 否 | 真实外部标识或链接对象，默认空对象 |
 
-限定码（qualified code）从根到叶以点号拼接，如 `闽.莆仙.仙游.游洋`，
-与 v1 契约（`docs/api/v1/openapi.yaml` 的 `DialectWrite`、ADR-0001）一致：
-`code` 同级唯一，不同分支允许相同短码。
+JSON 中 `aliases` 必须是字符串数组，`external_refs` 必须是对象。CSV 适合不使用这两个结构化字段的简单输入。
+输入包含表格之外的字段时会校验失败，避免拼写错误或无效数据被静默忽略。
 
-## 运行方式
+## 运行
 
-在仓库根目录执行，使用后端虚拟环境（脚本自动引导 `DJANGO_SETTINGS_MODULE=config.settings`）：
+在仓库根目录执行：
 
 ```bash
-# 只打印不落库
+# 只计算报告，不落库
 backend/guantou/.venv/bin/python -m tools.materials.dialect_seed.seed_dialects --dry-run
 
-# 真实写入（默认输入即本目录 dialects.json，可用 --input 指定其他文件）
-backend/guantou/.venv/bin/python -m tools.materials.dialect_seed.seed_dialects --input tools/materials/dialect_seed/dialects.json
+# 写入默认数据
+backend/guantou/.venv/bin/python -m tools.materials.dialect_seed.seed_dialects
+
+# 自定义输入
+backend/guantou/.venv/bin/python -m tools.materials.dialect_seed.seed_dialects --input path/to/dialects.json
 ```
 
-环境变量：默认读写 `backend/guantou/db.sqlite3`；如需指向其他库，设置
-`SQLITE_PATH`（见 `.env.example`）。
+脚本通过 `DJANGO_SETTINGS_MODULE=config.settings` 引导 ORM。如需使用其它 SQLite 数据库，设置 `SQLITE_PATH`。
 
-## 输出报告
+## 幂等与失败边界
 
-stdout 输出 JSON：`{created: n, skipped: n, failed: [{name, reason}]}`。
+stdout 固定输出：
 
-- `created`：新建记录数；`skipped`：按「名称 + 父级」命中已有记录数。
-- `failed`：脏数据逐条记录并跳过，不中断整体（缺名称/source key/编码、
-  编码含非法字符、层级取值非法、source key 重复、同级编码重复、同父级重名、
-  父级不存在、父级成环、编码被已有行占用）。
-- 退出码：`0` 无失败；`1` 存在 failed；`2` 输入文件本身不可读/不可解析。
+```json
+{"created": 15, "skipped": 0, "failed": []}
+```
 
-> 当前 `Dialect.code` 在库级仍是全局唯一约束（历史模型），比 v1 的「同级
-> 唯一」更严；脚本按 v1 规则校验，写入时若触发库级全局冲突会如实记入
-> failed，dry-run 与真实执行报告保持一致。模型约束对齐 v1 另行跟进。
-
-## 幂等与断点重跑
-
-按「名称 + 父级」`get_or_create`，重复执行只会 `skipped`，不产生重复数据；
-中断后直接重跑即可，无需状态文件。增量导入时 `parent` 可写已落库节点的
-完整限定码（如 `闽.莆仙.仙游`）。`--dry-run` 与真实执行共用同一校验与统计
-代码路径，仅最后写入开关不同。
-
-## 与 v1 契约的关系
-
-PR #121 合入后，`docs/api/v1/openapi.yaml` 是权威契约：`code` 同级唯一、
-中文短码、限定码从根到叶拼接；`GET /dialects/` 使用分页信封，省略
-`parent_id` 返回根节点，传入 `parent_id` 返回直接子节点。本目录的数据与
-校验规则按该契约编写；脚本只补数据，不改 `Dialect` 模型与
-`DialectSerializer` 输出。
+- 数据库身份是 `parent + code`；同一输入重复执行只增加 `skipped`。
+- 已有同级 code 但名称不同，或已有同级名称但 code 不同时，记入 `failed`，不覆盖人工数据。
+- dry-run 与真实写入共用同一套解析、拓扑排序和冲突判定。
+- 退出码：0 表示无失败，1 表示存在逐条失败，2 表示输入文件无法读取或解析。
 
 ## 测试
-
-纯校验/排序/加载逻辑不依赖 Django；另有一组基于临时 SQLite 的 ORM 测试
-（验证 dry-run 与真实执行报告一致、限定码父级解析），Django 不可用时自动跳过：
 
 ```bash
 python -m unittest discover tools/materials/tests
 # 或
 make materials-check
 ```
+
+纯函数测试覆盖字段校验与拓扑排序；ORM 测试从空白临时 SQLite 库建表，验证 dry-run、重复导入、同级冲突、跨分支同码、限定码和排序。
