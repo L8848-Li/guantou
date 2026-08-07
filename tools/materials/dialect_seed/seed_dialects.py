@@ -3,6 +3,16 @@
 从结构化源文件（JSON/CSV）读取方言点层级数据，按「名称 + 父级」幂等写入
 ``Dialect`` 表，供装罐页方言选择器、罐头列表过滤与搜索联想联调使用。
 
+数据约定（与 v1 契约 docs/api/v1/openapi.yaml 的 ``DialectWrite`` 对齐）：
+
+- ``code`` 是同级唯一的短码，默认使用社区熟悉的中文简称，从根到叶拼接成
+  限定码（qualified code），例如 ``闽.莆仙.仙游.游洋``。``code`` 不允许
+  包含点号、斜杠和空白，长度不超过 32。
+- ``key`` 是源文件内的 source key，作为无歧义的父级引用标识；``parent``
+  既可以引用同文件内某条记录的 ``key``，也可以引用已落库节点的完整限定码
+  （用于断点续跑/增量导入）。
+- 唯一性按「父级 + code」校验，允许不同分支下出现相同短码。
+
 用法（在仓库根目录执行，使用后端虚拟环境）::
 
     backend/guantou/.venv/bin/python -m tools.materials.dialect_seed.seed_dialects \
@@ -16,6 +26,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -23,6 +34,11 @@ from pathlib import Path
 REGION_LEVELS = ("family", "dialect", "area", "county", "town", "community")
 
 OPTIONAL_TEXT_FIELDS = ("province", "city", "county", "town", "description")
+
+# 与 v1 契约 DialectWrite.code 的 pattern 一致：不含点号、斜杠和空白。
+_CODE_PATTERN = re.compile(r"[./\s]")
+_CODE_MAX_LENGTH = 32
+_QUALIFIED_SEPARATOR = "."
 
 
 class SeedError(ValueError):
@@ -32,8 +48,9 @@ class SeedError(ValueError):
 class _PlannedNode:
     """dry-run 模式下代替尚未落库节点的占位父级。"""
 
-    def __init__(self, code):
-        self.code = code
+    def __init__(self, key, qualified_code):
+        self.key = key
+        self.qualified_code = qualified_code
         self.pk = None
 
 
@@ -71,15 +88,25 @@ def _normalize(raw):
     if not isinstance(raw, dict):
         return None, "记录必须是对象/行"
     name = _clean(raw.get("name"))
-    code = _clean(raw.get("code"))
     if not name:
         return None, "缺少名称"
+    key = _clean(raw.get("key"))
+    if not key:
+        return {"name": name}, "缺少 source key"
+    if _CODE_PATTERN.search(key):
+        return {"name": name}, f"source key 含非法字符: {key}"
+    code = _clean(raw.get("code"))
     if not code:
         return {"name": name}, "缺少编码"
+    if _CODE_PATTERN.search(code):
+        return {"name": name}, f"编码含非法字符（点号/斜杠/空白）: {code}"
+    if len(code) > _CODE_MAX_LENGTH:
+        return {"name": name}, f"编码超过 {_CODE_MAX_LENGTH} 字符: {code}"
     level = _clean(raw.get("region_level")) or "dialect"
     if level not in REGION_LEVELS:
         return {"name": name}, f"层级取值非法: {level}"
     record = {
+        "key": key,
         "code": code,
         "name": name,
         "parent": _clean(raw.get("parent")) or None,
@@ -92,14 +119,14 @@ def _normalize(raw):
     return record, None
 
 
-def _classify_pending(record, pending, known):
+def _classify_pending(record, pending, known_qualified):
     """解释拓扑排序后仍无法就绪的记录：缺父级、成环或依赖失败记录。"""
     visited = set()
     current = record
     while True:
-        visited.add(current["code"])
+        visited.add(current["key"])
         parent = current["parent"]
-        if parent is None or parent in known:
+        if parent is None or parent in known_qualified:
             return "依赖的记录未通过校验"
         parent_record = pending.get(parent)
         if parent_record is None:
@@ -109,16 +136,20 @@ def _classify_pending(record, pending, known):
         current = parent_record
 
 
-def validate_records(records, known_parent_codes=()):
+def validate_records(records, known_parent_qualified=()):
     """校验并拓扑排序记录，返回 ``(有序记录, failed 列表)``。
 
-    - 缺少名称/编码、层级取值非法、编码重复、同父级重名 → failed；
-    - 父级既不在输入内也不在 ``known_parent_codes``（已落库编码）→ failed；
+    - 缺少名称/source key/编码、编码含非法字符、层级取值非法 → failed；
+    - source key 在输入内重复 → failed；
+    - 同一父级下编码重复、同父级重名 → failed（不同分支允许相同短码）；
+    - 父级既不是输入内的 source key，也不在 ``known_parent_qualified``
+      （已落库节点的限定码）→ failed；
     - 父级引用成环 → failed，相关记录都不进入有序结果。
     """
     failed = []
     valid = {}
-    seen_pairs = set()
+    seen_code_pairs = set()
+    seen_name_pairs = set()
 
     for raw in records:
         record, reason = _normalize(raw)
@@ -127,47 +158,100 @@ def validate_records(records, known_parent_codes=()):
                 {"name": (record or {}).get("name", str(raw)[:40]), "reason": reason}
             )
             continue
-        if record["code"] in valid:
+        if record["key"] in valid:
             failed.append(
                 {
                     "name": record["name"],
-                    "reason": f"编码在输入内重复: {record['code']}",
+                    "reason": f"source key 在输入内重复: {record['key']}",
                 }
             )
             continue
-        pair = (record["name"], record["parent"])
-        if pair in seen_pairs:
+        code_pair = (record["parent"], record["code"])
+        if code_pair in seen_code_pairs:
+            failed.append(
+                {"name": record["name"], "reason": f"同级编码重复: {record['code']}"}
+            )
+            continue
+        seen_code_pairs.add(code_pair)
+        name_pair = (record["parent"], record["name"])
+        if name_pair in seen_name_pairs:
             failed.append({"name": record["name"], "reason": "同父级下名称重复"})
             continue
-        seen_pairs.add(pair)
-        valid[record["code"]] = record
+        seen_name_pairs.add(name_pair)
+        valid[record["key"]] = record
 
-    known = set(known_parent_codes)
+    known_qualified = set(known_parent_qualified)
     ordered = []
     emitted = set()
     pending = dict(valid)
     while pending:
         ready = [
-            code
-            for code, record in pending.items()
+            key
+            for key, record in pending.items()
             if record["parent"] is None
-            or record["parent"] in known
+            or record["parent"] in known_qualified
             or record["parent"] in emitted
         ]
         if not ready:
             break
-        for code in ready:
-            ordered.append(pending.pop(code))
-            emitted.add(code)
+        for key in ready:
+            ordered.append(pending.pop(key))
+            emitted.add(key)
 
     for record in pending.values():
         failed.append(
             {
                 "name": record["name"],
-                "reason": _classify_pending(record, pending, known),
+                "reason": _classify_pending(record, pending, known_qualified),
             }
         )
     return ordered, failed
+
+
+def qualified_codes(ordered):
+    """计算有序记录的限定码，返回 ``{key: 从根到叶以点号拼接的 code}``。
+
+    父级若引用外部限定码（已落库节点），直接作为前缀拼接。
+    """
+    result = {}
+    for record in ordered:
+        parent = record["parent"]
+        if parent is None:
+            result[record["key"]] = record["code"]
+        elif parent in result:
+            result[record["key"]] = f"{result[parent]}.{record['code']}"
+        else:
+            result[record["key"]] = f"{parent}.{record['code']}"
+    return result
+
+
+def _resolve_qualified_code(dialect_model, qualified, planned_by_qualified):
+    """按限定码解析父级：先查本次计划节点，再逐级在库中下钻。"""
+    if qualified in planned_by_qualified:
+        return planned_by_qualified[qualified]
+    current = None
+    for segment in qualified.split(_QUALIFIED_SEPARATOR):
+        current = dialect_model.objects.filter(parent=current, code=segment).first()
+        if current is None:
+            return None
+    return current
+
+
+def existing_qualified_codes(dialect_model):
+    """收集库中所有节点的限定码，供父级引用校验使用。"""
+    nodes = {
+        node["id"]: node
+        for node in dialect_model.objects.values("id", "parent_id", "code")
+    }
+    qualified = set()
+    for node in nodes.values():
+        segments = []
+        current = node
+        while current is not None:
+            segments.append(current["code"])
+            current = nodes.get(current["parent_id"])
+        qualified.add(_QUALIFIED_SEPARATOR.join(reversed(segments)))
+    return qualified
 
 
 def seed_records(ordered, dialect_model, dry_run=False):
@@ -179,23 +263,28 @@ def seed_records(ordered, dialect_model, dry_run=False):
 
     report = {"created": 0, "skipped": 0, "failed": []}
     resolved = {}
+    planned_by_qualified = {}
+    qualified_by_key = qualified_codes(ordered)
 
     for record in ordered:
         parent = None
-        parent_code = record["parent"]
-        if parent_code:
-            parent = resolved.get(parent_code)
+        parent_ref = record["parent"]
+        if parent_ref:
+            parent = resolved.get(parent_ref)
             if parent is None:
-                parent = dialect_model.objects.filter(code=parent_code).first()
+                parent = _resolve_qualified_code(
+                    dialect_model, parent_ref, planned_by_qualified
+                )
             if parent is None:
                 report["failed"].append(
-                    {"name": record["name"], "reason": f"父级不存在: {parent_code}"}
+                    {"name": record["name"], "reason": f"父级不存在: {parent_ref}"}
                 )
                 continue
             if isinstance(parent, _PlannedNode):
                 # 父级只在计划中（dry-run 未落库），子级的「名称 + 父级」必然
-                # 不存在；但 code 是全局唯一，仍需与真实写入路径一致的占用预检，
-                # 否则 dry-run 会对真实执行必然失败的记录误报 created。
+                # 不存在；但 code 在库级仍受唯一约束，需要与真实写入路径一致
+                # 的占用预检，否则 dry-run 会对真实执行必然失败的记录误报
+                # created。
                 if dialect_model.objects.filter(code=record["code"]).exists():
                     report["failed"].append(
                         {
@@ -205,7 +294,9 @@ def seed_records(ordered, dialect_model, dry_run=False):
                     )
                     continue
                 report["created"] += 1
-                resolved[record["code"]] = _PlannedNode(record["code"])
+                planned = _PlannedNode(record["key"], qualified_by_key[record["key"]])
+                resolved[record["key"]] = planned
+                planned_by_qualified[planned.qualified_code] = planned
                 continue
 
         defaults = {
@@ -224,7 +315,7 @@ def seed_records(ordered, dialect_model, dry_run=False):
             ).first()
             if existing is not None:
                 report["skipped"] += 1
-                resolved[record["code"]] = existing
+                resolved[record["key"]] = existing
                 continue
             if dialect_model.objects.filter(code=record["code"]).exists():
                 report["failed"].append(
@@ -235,7 +326,9 @@ def seed_records(ordered, dialect_model, dry_run=False):
                 )
                 continue
             report["created"] += 1
-            resolved[record["code"]] = _PlannedNode(record["code"])
+            planned = _PlannedNode(record["key"], qualified_by_key[record["key"]])
+            resolved[record["key"]] = planned
+            planned_by_qualified[planned.qualified_code] = planned
             continue
 
         try:
@@ -249,7 +342,7 @@ def seed_records(ordered, dialect_model, dry_run=False):
             )
             continue
         report["created" if created else "skipped"] += 1
-        resolved[record["code"]] = obj
+        resolved[record["key"]] = obj
     return report
 
 
@@ -293,8 +386,8 @@ def main(argv=None):
         return 2
 
     dialect_model = setup_django()
-    known_codes = set(dialect_model.objects.values_list("code", flat=True))
-    ordered, failed = validate_records(records, known_parent_codes=known_codes)
+    known_qualified = existing_qualified_codes(dialect_model)
+    ordered, failed = validate_records(records, known_parent_qualified=known_qualified)
     report = seed_records(ordered, dialect_model, dry_run=args.dry_run)
     report["failed"] = failed + report["failed"]
     print(json.dumps(report, ensure_ascii=False, indent=2))
