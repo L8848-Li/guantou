@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -142,6 +143,106 @@ class ValidateRecordsTest(unittest.TestCase):
         ordered, failed = seed_dialects.validate_records(records)
         self.assertEqual(ordered, [])
         self.assertEqual(len(failed), 2)
+
+
+class SeedRecordsOrmTest(unittest.TestCase):
+    """基于真实 SQLite 表的写入测试，验证 dry-run 与真实执行报告一致。
+
+    需要后端 Django 环境（backend venv）；Django 不可用时整类自动跳过。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls._tmpdir = tempfile.TemporaryDirectory()
+        cls._previous_sqlite_path = os.environ.get("SQLITE_PATH")
+        os.environ["SQLITE_PATH"] = os.path.join(
+            cls._tmpdir.name, "dialect_seed_test.sqlite3"
+        )
+        try:
+            cls.dialect_model = seed_dialects.setup_django()
+        except Exception as exc:
+            cls._restore_sqlite_path()
+            cls._tmpdir.cleanup()
+            raise unittest.SkipTest(f"Django 环境不可用: {exc}")
+        from django.core.management import call_command
+
+        # 在临时库上执行完整迁移，保证级联删除等关联查询的表都存在。
+        call_command("migrate", run_syncdb=True, verbosity=0)
+
+    @classmethod
+    def _restore_sqlite_path(cls):
+        if cls._previous_sqlite_path is None:
+            os.environ.pop("SQLITE_PATH", None)
+        else:
+            os.environ["SQLITE_PATH"] = cls._previous_sqlite_path
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._restore_sqlite_path()
+        cls._tmpdir.cleanup()
+        super().tearDownClass()
+
+    def setUp(self):
+        self.dialect_model.objects.all().delete()
+
+    def _planned_parent_with_child(self):
+        return [
+            _record("new-parent", "本次新建父级"),
+            _record("taken-code", "冲突子级", parent="new-parent"),
+        ]
+
+    def test_dry_run_flags_code_conflict_under_planned_parent(self):
+        # 数据库中无关节点已占用子级 code，父级为本次计划新建
+        self.dialect_model.objects.create(name="无关节点", code="taken-code")
+        ordered, failed = seed_dialects.validate_records(
+            self._planned_parent_with_child()
+        )
+        self.assertEqual(failed, [])
+
+        report = seed_dialects.seed_records(
+            ordered, self.dialect_model, dry_run=True
+        )
+
+        self.assertEqual(report["created"], 1)  # 只有父级计入 created
+        self.assertEqual(report["skipped"], 0)
+        self.assertEqual(len(report["failed"]), 1)
+        self.assertEqual(report["failed"][0]["name"], "冲突子级")
+        self.assertIn("编码已被占用", report["failed"][0]["reason"])
+        # dry-run 不应落库
+        self.assertEqual(self.dialect_model.objects.count(), 1)
+
+    def test_dry_run_matches_real_run_on_code_conflict(self):
+        self.dialect_model.objects.create(name="无关节点", code="taken-code")
+        ordered, _ = seed_dialects.validate_records(self._planned_parent_with_child())
+
+        dry_report = seed_dialects.seed_records(
+            ordered, self.dialect_model, dry_run=True
+        )
+        real_report = seed_dialects.seed_records(
+            ordered, self.dialect_model, dry_run=False
+        )
+
+        self.assertEqual(dry_report, real_report)
+        self.assertEqual(
+            [(item["name"], item["reason"]) for item in real_report["failed"]],
+            [("冲突子级", "编码已被占用: taken-code")],
+        )
+
+    def test_planned_parent_child_created_when_code_free(self):
+        ordered, _ = seed_dialects.validate_records(self._planned_parent_with_child())
+
+        dry_report = seed_dialects.seed_records(
+            ordered, self.dialect_model, dry_run=True
+        )
+        self.assertEqual(dry_report, {"created": 2, "skipped": 0, "failed": []})
+        self.assertEqual(self.dialect_model.objects.count(), 0)
+
+        real_report = seed_dialects.seed_records(
+            ordered, self.dialect_model, dry_run=False
+        )
+        self.assertEqual(real_report, dry_report)
+        self.assertEqual(self.dialect_model.objects.count(), 2)
 
 
 if __name__ == "__main__":

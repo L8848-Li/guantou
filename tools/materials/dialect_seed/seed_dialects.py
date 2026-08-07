@@ -193,7 +193,17 @@ def seed_records(ordered, dialect_model, dry_run=False):
                 )
                 continue
             if isinstance(parent, _PlannedNode):
-                # 父级只在计划中（dry-run 未落库），子级必然也不存在。
+                # 父级只在计划中（dry-run 未落库），子级的「名称 + 父级」必然
+                # 不存在；但 code 是全局唯一，仍需与真实写入路径一致的占用预检，
+                # 否则 dry-run 会对真实执行必然失败的记录误报 created。
+                if dialect_model.objects.filter(code=record["code"]).exists():
+                    report["failed"].append(
+                        {
+                            "name": record["name"],
+                            "reason": f"编码已被占用: {record['code']}",
+                        }
+                    )
+                    continue
                 report["created"] += 1
                 resolved[record["code"]] = _PlannedNode(record["code"])
                 continue
