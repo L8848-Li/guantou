@@ -98,6 +98,7 @@ class Package(models.Model):
     unicode = models.CharField(max_length=80, blank=True, verbose_name="Unicode")
     metadata = models.JSONField(default=dict, blank=True, verbose_name="扩展信息")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
     def __str__(self):
         return self.text
@@ -159,8 +160,8 @@ class FlavorPackage(models.Model):
         BORROWED = "borrowed", "假借"
         DISPUTED = "disputed", "争议"
 
-    flavor = models.ForeignKey(Flavor, on_delete=models.CASCADE)
-    package = models.ForeignKey(Package, on_delete=models.CASCADE)
+    flavor = models.ForeignKey(Flavor, on_delete=models.CASCADE, verbose_name="风味")
+    package = models.ForeignKey(Package, on_delete=models.CASCADE, verbose_name="包装")
     mapping_type = models.CharField(
         max_length=20,
         choices=MappingType.choices,
@@ -168,6 +169,7 @@ class FlavorPackage(models.Model):
         verbose_name="映射类型",
     )
     note = models.CharField(max_length=240, blank=True, verbose_name="说明")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
 
     class Meta:
         constraints = [

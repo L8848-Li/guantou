@@ -7,6 +7,7 @@ class SiteSettings(models.Model):
         default=list, blank=True, verbose_name="推荐公告"
     )
     carousel = models.JSONField(default=list, blank=True, verbose_name="首页轮播")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
     @classmethod
     def get_solo(cls):

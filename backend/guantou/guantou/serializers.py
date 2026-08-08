@@ -149,8 +149,9 @@ class PackageSerializer(serializers.ModelSerializer):
             "metadata",
             "flavors",
             "created_at",
+            "updated_at",
         ]
-        read_only_fields = ["id", "flavors", "created_at"]
+        read_only_fields = ["id", "flavors", "created_at", "updated_at"]
 
     def get_flavors(self, obj):
         return FlavorRefSerializer(obj.flavors.all(), many=True).data
@@ -576,6 +577,14 @@ class NameplateSerializer(NameplateCardSerializer):
             or hasattr(supersedes, "superseded_by")
         ):
             raise ConflictException("该铭牌已经撤回或被其他修订取代")
+        if supersedes and self.instance:
+            ancestor = supersedes
+            while ancestor is not None:
+                if ancestor.pk == self.instance.pk:
+                    raise serializers.ValidationError(
+                        {"supersedes_id": "修订链不得形成环"}
+                    )
+                ancestor = ancestor.supersedes
         return attrs
 
     @transaction.atomic

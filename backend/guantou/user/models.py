@@ -38,6 +38,8 @@ class UserInfo(models.Model):
     )
     points_sum = models.IntegerField(default=0, verbose_name="总积分")
     points_now = models.IntegerField(default=0, verbose_name="当前积分")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
     def __str__(self):
         return self.user.username
