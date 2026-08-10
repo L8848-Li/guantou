@@ -343,6 +343,42 @@ class CanSubmissionApiTests(DomainFixture):
         self.assertIsNone(response.data["primary_nameplate"])
         self.assertNotIn("flavor_variant", response.data)
 
+    def test_submit_without_concept_text_is_rejected(self):
+        # #125 偏差 1：concept_text 缺失时不得创建无标罐头，按 v1 契约返回 400
+        payload = self.payload()
+        payload.pop("concept_text")
+        response = self.client.post("/cans/", payload, format="json")
+        self.assert_error(response, 400, "concept_text")
+        self.assertEqual(Can.objects.count(), 0)
+
+    def test_repeated_nameplate_submission_reuses_package_and_flavor(self):
+        # #125 偏差 2：重复提交相同初始铭牌时 Package/Flavor 均按 get_or_create 复用
+        payload = self.payload(
+            initial_nameplate={
+                "text_content": "行",
+                "definition": "走路",
+                "package_type": "orthodox",
+                "source": SOURCE,
+            }
+        )
+        first = self.client.post("/cans/", payload, format="json")
+        second = self.client.post("/cans/", payload, format="json")
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 201)
+        self.assertEqual(
+            Package.objects.filter(
+                text="行", package_type=Package.PackageType.ORTHODOX
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            Flavor.objects.filter(name="走路", definition="走路").count(), 1
+        )
+        first_flavor = first.data["nameplates"][0]["flavor"]
+        second_flavor = second.data["nameplates"][0]["flavor"]
+        self.assertIsNotNone(first_flavor)
+        self.assertEqual(first_flavor["id"], second_flavor["id"])
+
     def test_update_can_can_clear_submission_hint_but_not_replace_audio(self):
         can = self.make_can()
 
