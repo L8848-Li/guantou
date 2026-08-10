@@ -14,7 +14,7 @@ from .models import (
     Pronunciation,
     Shelf,
 )
-from .services import create_can_submission
+from .services import clean_text, create_can_submission
 
 
 class UserLiteSerializer(serializers.Serializer):
@@ -698,7 +698,7 @@ class CanCardSerializer(serializers.ModelSerializer):
 class CanSerializer(CanCardSerializer):
     audio_url = serializers.URLField(required=True)
     concept_text = serializers.CharField(
-        max_length=200, required=True, allow_blank=False
+        max_length=200, required=False, allow_blank=True
     )
     recorder = UserLiteSerializer(read_only=True)
     submitted_dialect_id = serializers.PrimaryKeyRelatedField(
@@ -739,10 +739,12 @@ class CanSerializer(CanCardSerializer):
         ]
 
     def validate(self, attrs):
-        if not self.instance and attrs.get("submitted_dialect") is None:
-            raise serializers.ValidationError(
-                {"submitted_dialect_id": "创建罐头时必须提供方言提示"}
-            )
+        if not self.instance:
+            if attrs.get("submitted_dialect") is None:
+                raise serializers.ValidationError(
+                    {"submitted_dialect_id": "创建罐头时必须提供方言提示"}
+                )
+            attrs = self._apply_supplement_backfill(attrs)
         if self.instance:
             immutable = {"audio_url", "duration_ms"}.intersection(attrs)
             if immutable:
@@ -750,6 +752,31 @@ class CanSerializer(CanCardSerializer):
                     {field: "创建后不可通过 Can API 修改" for field in immutable}
                 )
         return super().validate(attrs)
+
+    def _apply_supplement_backfill(self, attrs):
+        # 补录音模式（#29/#150）：concept_text 可省略，按 initial_nameplate.flavor_id
+        # 对应义项名称回填；两者均缺失时拒绝创建。
+        concept_text = clean_text(attrs.get("concept_text"))
+        if concept_text:
+            attrs["concept_text"] = concept_text
+            return attrs
+        flavor_id = (attrs.get("initial_nameplate") or {}).get("flavor_id")
+        if not flavor_id:
+            raise serializers.ValidationError(
+                {
+                    "concept_text": (
+                        "请提供普通话概念，"
+                        "或通过 initial_nameplate.flavor_id 指定已有义项"
+                    )
+                }
+            )
+        flavor = Flavor.objects.filter(id=flavor_id).first()
+        if flavor is None:
+            raise serializers.ValidationError(
+                {"initial_nameplate": {"flavor_id": ["义项不存在"]}}
+            )
+        attrs["concept_text"] = flavor.name
+        return attrs
 
     def create(self, validated_data):
         initial_nameplate = validated_data.pop("initial_nameplate", None)

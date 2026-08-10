@@ -1905,13 +1905,18 @@ components:
         source: { $ref: "#/components/schemas/NameplateSource" }
     CanWrite:
       type: object
-      required: [audio_url, submitted_dialect_id, concept_text]
+      required: [audio_url, submitted_dialect_id]
       properties:
         audio_url: { type: string, format: uri }
         submitted_dialect_id:
           type: integer
           description: 装罐时的采集提示，不是最终规范分类；主铭牌可提出不同 Dialect。
-        concept_text: { type: string, maxLength: 200 }
+        concept_text:
+          type: string
+          maxLength: 200
+          description: >-
+            普通话概念。自由装罐必填；补录音模式可省略，后端按
+            initial_nameplate.flavor_id 对应义项名称回填；两者均缺失时返回 400。
         source_note: { type: string, maxLength: 300 }
         duration_ms: { type: integer, minimum: 0 }
         initial_nameplate: { $ref: "#/components/schemas/InitialNameplate" }

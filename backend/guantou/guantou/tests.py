@@ -403,6 +403,48 @@ class CanSubmissionApiTests(DomainFixture):
         self.assertIsNone(plate["package"])
         self.assertFalse(plate["is_primary"])
 
+    def test_supplement_recording_backfills_concept_text_from_flavor(self):
+        # #150 补录音模式：concept_text 可省略，后端按义项名称回填
+        response = self.client.post(
+            "/cans/",
+            {
+                "audio_url": "https://example.test/supplement.mp3",
+                "submitted_dialect_id": self.dialect.id,
+                "initial_nameplate": {
+                    "flavor_id": self.flavor.id,
+                    "source": SOURCE,
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["concept_text"], self.flavor.name)
+        plate = response.data["nameplates"][0]
+        self.assertEqual(plate["flavor"]["id"], self.flavor.id)
+
+    def test_supplement_recording_rejects_missing_flavor(self):
+        response = self.client.post(
+            "/cans/",
+            {
+                "audio_url": "https://example.test/supplement.mp3",
+                "submitted_dialect_id": self.dialect.id,
+                "initial_nameplate": {"flavor_id": 999999, "source": SOURCE},
+            },
+            format="json",
+        )
+        self.assert_error(response, 400, "initial_nameplate")
+        self.assertEqual(Can.objects.count(), 0)
+
+    def test_submit_without_concept_text_and_flavor_is_rejected(self):
+        # #150：concept_text 与义项均缺失时拒绝创建
+        payload = self.payload(
+            initial_nameplate={"text_content": "行", "source": SOURCE}
+        )
+        payload.pop("concept_text")
+        response = self.client.post("/cans/", payload, format="json")
+        self.assert_error(response, 400, "concept_text")
+        self.assertEqual(Can.objects.count(), 0)
+
     def test_initial_pronunciation_link_uses_nameplate_as_evidence(self):
         pronunciation = self.make_pronunciation()
         response = self.client.post(
