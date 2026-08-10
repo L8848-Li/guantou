@@ -491,6 +491,78 @@ class ShelfPermissionTests(DomainFixture):
         self.assertEqual(shelf.title, "我的集盒")
 
 
+class ShelfWriteApiTests(DomainFixture):
+    def payload(self, **overrides):
+        values = {
+            "title": "乡音精选",
+            "slug": "curation",
+            "description": "主题策展",
+        }
+        values.update(overrides)
+        return values
+
+    def test_create_shelf_records_creator(self):
+        # #144 后端验收：合法 POST /shelves/ 返回 201 且 creator 被正确记录
+        response = self.client.post("/shelves/", self.payload(), format="json")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["creator"]["id"], self.user.id)
+        shelf = Shelf.objects.get(id=response.data["id"])
+        self.assertEqual(shelf.creator, self.user)
+
+    def test_create_shelf_with_content_visible_in_detail(self):
+        # #144 后端验收：创建集盒 + 添加内容路径，详情中可见新增条目
+        can = self.make_can()
+        response = self.client.post(
+            "/shelves/",
+            self.payload(flavor_ids=[self.flavor.id], can_ids=[can.id]),
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201)
+
+        detail = self.client.get(f"/shelves/{response.data['id']}/")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(
+            [item["id"] for item in detail.data["flavors"]], [self.flavor.id]
+        )
+        self.assertEqual([item["id"] for item in detail.data["cans"]], [can.id])
+
+    def test_patch_content_lists_are_full_replacement(self):
+        # 固化 PATCH 语义：flavor_ids/can_ids 为全量替换而非增量添加（#144）
+        shelf = Shelf.objects.create(title="集盒", slug="curation", creator=self.user)
+        shelf.flavors.set([self.flavor])
+        first_can = self.make_can()
+        shelf.cans.set([first_can])
+
+        second_can = self.make_can(audio_url="https://example.test/other.mp3")
+        response = self.client.patch(
+            f"/shelves/{shelf.id}/",
+            {"flavor_ids": [], "can_ids": [second_can.id]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        shelf.refresh_from_db()
+        self.assertEqual(list(shelf.flavors.all()), [])
+        self.assertEqual(list(shelf.cans.all()), [second_can])
+
+    def test_non_creator_cannot_add_content(self):
+        # #144 后端验收：非创建者写入返回 403 且内容未变更
+        shelf = Shelf.objects.create(title="他人集盒", slug="others", creator=self.user)
+        can = self.make_can()
+        self.client.force_authenticate(self.other)
+
+        response = self.client.patch(
+            f"/shelves/{shelf.id}/", {"can_ids": [can.id]}, format="json"
+        )
+
+        self.assert_error(response, 403)
+        self.assertEqual(shelf.cans.count(), 0)
+
+    def test_anonymous_create_shelf_returns_401(self):
+        self.client.force_authenticate(None)
+        response = self.client.post("/shelves/", self.payload(), format="json")
+        self.assert_error(response, 401)
+
+
 class ErrorContractTests(TestCase):
     def test_internal_error_does_not_expose_original_exception(self):
         response = CommonException(RuntimeError("database-password-secret")).response()
