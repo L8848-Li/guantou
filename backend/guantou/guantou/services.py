@@ -223,15 +223,23 @@ def get_or_create_submission_flavor(can, label, user, package):
         return None
 
     definition = clean_text(label.get("definition")) or can.concept_text or package.text
-    # 按 get_or_create 语义复用同名义项，重复提交不再新建重复 Flavor（#125）
-    flavor, _ = Flavor.objects.get_or_create(
-        name=definition,
-        definition=definition,
-        defaults={
-            "mandarin": [can.concept_text] if can.concept_text else [],
-            "created_by": user if user and user.is_authenticated else None,
-        },
+    # Serialize repeated submissions for the same package and tolerate duplicate
+    # Flavor rows created by the legacy submission path. The earliest row is the
+    # deterministic canonical choice until a dedicated data-governance migration
+    # can establish a database-level Flavor identity constraint.
+    Package.objects.select_for_update().get(pk=package.pk)
+    flavor = (
+        Flavor.objects.filter(name=definition, definition=definition)
+        .order_by("id")
+        .first()
     )
+    if flavor is None:
+        flavor = Flavor.objects.create(
+            name=definition,
+            definition=definition,
+            mandarin=[can.concept_text] if can.concept_text else [],
+            created_by=user if user and user.is_authenticated else None,
+        )
     FlavorPackage.objects.get_or_create(flavor=flavor, package=package)
     return flavor
 

@@ -379,6 +379,28 @@ class CanSubmissionApiTests(DomainFixture):
         self.assertIsNotNone(first_flavor)
         self.assertEqual(first_flavor["id"], second_flavor["id"])
 
+    def test_repeated_submission_tolerates_preexisting_duplicate_flavors(self):
+        first_existing = Flavor.objects.create(name="走路", definition="走路")
+        Flavor.objects.create(name="走路", definition="走路")
+        payload = self.payload(
+            initial_nameplate={
+                "text_content": "行",
+                "definition": "走路",
+                "package_type": "orthodox",
+                "source": SOURCE,
+            }
+        )
+
+        response = self.client.post("/cans/", payload, format="json")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            Flavor.objects.filter(name="走路", definition="走路").count(), 2
+        )
+        self.assertEqual(
+            response.data["nameplates"][0]["flavor"]["id"], first_existing.id
+        )
+
     def test_update_can_can_clear_submission_hint_but_not_replace_audio(self):
         can = self.make_can()
 
