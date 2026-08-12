@@ -85,18 +85,17 @@ export default {
   },
 };
 </script>
+<style lang="scss">
+/* 全局 Design Tokens：全站颜色/间距/圆角/字号唯一来源（M1·设计系统） */
+@import '@/styles/tokens.scss';
+</style>
+
 <style>
 @import 'colorui/main.css';
 @import 'colorui/icon.css';
 @import '@/utils/u-parse/u-parse.css';
 
 page {
-  --page-color: #f6f7f3;
-  --surface-color: #ffffff;
-  --text-color: #1d2a24;
-  --muted-color: #647068;
-  --border-color: #e1e6dc;
-  --accent-color: #1f5c43;
   background-color: var(--page-color);
   color: var(--text-color);
 }
@@ -104,12 +103,6 @@ page {
 /* #ifdef H5 */
 html[data-theme='dark'],
 html[data-theme='dark'] page {
-  --page-color: #121915;
-  --surface-color: #1d2822;
-  --text-color: #edf4ef;
-  --muted-color: #a9b8ae;
-  --border-color: #34443a;
-  --accent-color: #69b58b;
   background: var(--page-color);
   color-scheme: dark;
 }

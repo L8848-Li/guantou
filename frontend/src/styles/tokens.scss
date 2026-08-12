@@ -1,0 +1,89 @@
+/**
+ * 全局 Design Tokens（M1·设计系统）
+ *
+ * Token 是全站颜色/间距/圆角/字号的唯一来源，页面与组件禁止新增 hex 颜色字面量。
+ * - 浅色为默认主题，定义在 page（小程序）与 :root/page（H5）上；
+ * - 暗色通过 html[data-theme='dark']（H5，由 services/theme.js 写入）
+ *   与 .theme-dark（PageShell/页面根元素）覆盖，两者均只覆盖颜色类 Token；
+ * - 间距/圆角/字号与主题无关，只定义一次。
+ *
+ * 命名约定：
+ * - 颜色：--page-color（页面底色）/--surface-color（卡片等浮层）/--text-color（正文）
+ *   /--muted-color（次要文字）/--border-color（描边）/--accent-color（品牌强调）
+ *   /--danger-color / --warning-color / --success-color（语义色）
+ *   /--on-accent-color（强调色背景上的文字/图标）
+ * - 字号：--font-size-xs..xl；间距：--space-1..5；圆角：--radius-sm/md/lg/pill
+ */
+
+@mixin light-color-tokens {
+  --page-color: #f6f7f3;
+  --surface-color: #ffffff;
+  --text-color: #1d2a24;
+  --muted-color: #647068;
+  --border-color: #e1e6dc;
+  --accent-color: #1f5c43;
+  --on-accent-color: #ffffff;
+  --danger-color: #d54941;
+  --warning-color: #ed7b2f;
+  --success-color: #2ba471;
+}
+
+@mixin dark-color-tokens {
+  --page-color: #121915;
+  --surface-color: #1d2822;
+  --text-color: #edf4ef;
+  --muted-color: #a9b8ae;
+  --border-color: #34443a;
+  --accent-color: #69b58b;
+  --on-accent-color: #10201a;
+  --danger-color: #fb8f86;
+  --warning-color: #f5a56c;
+  --success-color: #5fce9f;
+}
+
+@mixin static-tokens {
+  /* 字号阶梯 */
+  --font-size-xs: 24rpx;
+  --font-size-sm: 26rpx;
+  --font-size-base: 28rpx;
+  --font-size-lg: 32rpx;
+  --font-size-xl: 36rpx;
+
+  /* 间距档位（8rpx 基数） */
+  --space-1: 8rpx;
+  --space-2: 16rpx;
+  --space-3: 24rpx;
+  --space-4: 32rpx;
+  --space-5: 48rpx;
+
+  /* 圆角档位 */
+  --radius-sm: 8rpx;
+  --radius-md: 14rpx;
+  --radius-lg: 20rpx;
+  --radius-pill: 999rpx;
+}
+
+/* 小程序与 App 端：page 是页面根元素 */
+page {
+  @include light-color-tokens;
+  @include static-tokens;
+}
+
+/* #ifdef H5 */
+/* H5 端 :root 供弹层等脱离 page 树的节点消费 */
+:root {
+  @include light-color-tokens;
+  @include static-tokens;
+}
+
+/* H5 暗色：services/theme.js 会在 documentElement 上写入 data-theme */
+html[data-theme='dark'],
+html[data-theme='dark'] page {
+  @include dark-color-tokens;
+}
+/* #endif */
+
+/* 组件级暗色：PageShell 等通过 theme-dark 类名切换时覆盖子树 */
+.theme-dark {
+  @include dark-color-tokens;
+}

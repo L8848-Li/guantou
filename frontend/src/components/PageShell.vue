@@ -103,25 +103,11 @@ export default {
 </script>
 
 <style scoped>
+/* 颜色 Token 来自全局 styles/tokens.scss；暗色由 .theme-dark 全局规则覆盖子树 */
 .page-shell {
-  --page-color: #f6f7f3;
-  --surface-color: #ffffff;
-  --text-color: #1d2a24;
-  --muted-color: #647068;
-  --border-color: #e8ebe4;
-  --accent-color: #1f5c43;
   min-height: 100vh;
   background: var(--page-color);
   color: var(--text-color);
-}
-
-.page-shell.theme-dark {
-  --page-color: #121915;
-  --surface-color: #1d2822;
-  --text-color: #edf4ef;
-  --muted-color: #a9b8ae;
-  --border-color: #34443a;
-  --accent-color: #69b58b;
 }
 
 .shell-topbar {
@@ -162,11 +148,11 @@ export default {
   margin: 0;
   height: 58rpx;
   line-height: 58rpx;
-  padding: 0 24rpx;
+  padding: 0 var(--space-3);
   background: var(--accent-color);
-  color: #ffffff;
-  border-radius: 999rpx;
-  font-size: 26rpx;
+  color: var(--on-accent-color);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-size-sm);
 }
 
 .shell-content {

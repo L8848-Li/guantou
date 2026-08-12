@@ -294,27 +294,13 @@ export default {
 </script>
 
 <style scoped>
+/* 颜色 Token 来自全局 styles/tokens.scss；暗色由 .theme-dark 全局规则覆盖 */
 .page {
-  --page-color: #f6f7f3;
-  --surface-color: #ffffff;
-  --text-color: #1d2a24;
-  --muted-color: #647068;
-  --border-color: #e1e6dc;
-  --accent-color: #1f5c43;
   min-height: 100vh;
-  background: var(--page-color, #f6f7f3);
-  color: var(--text-color, #1d2a24);
+  background: var(--page-color);
+  color: var(--text-color);
   padding: 44rpx 28rpx 80rpx;
   box-sizing: border-box;
-}
-
-.page.theme-dark {
-  --page-color: #121915;
-  --surface-color: #1d2822;
-  --text-color: #edf4ef;
-  --muted-color: #a9b8ae;
-  --border-color: #34443a;
-  --accent-color: #69b58b;
 }
 
 .guest-profile {
