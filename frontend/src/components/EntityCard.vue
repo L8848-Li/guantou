@@ -58,18 +58,18 @@ export default {
 
 <style scoped>
 .entity-card {
-  background: #ffffff;
-  border: 1px solid #e1e6dc;
-  border-radius: 14rpx;
-  padding: 24rpx;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
   margin-bottom: 18rpx;
   box-sizing: border-box;
 }
 
 .entity-type {
-  color: #1f5c43;
-  font-size: 24rpx;
-  margin-bottom: 8rpx;
+  color: var(--accent-color);
+  font-size: var(--font-size-xs);
+  margin-bottom: var(--space-1);
 }
 
 .entity-title {
@@ -80,14 +80,14 @@ export default {
 
 .entity-description {
   margin-top: 10rpx;
-  color: #425148;
+  color: var(--text-secondary-color);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
 
 .entity-meta {
   margin-top: 14rpx;
-  color: #7a867d;
-  font-size: 24rpx;
+  color: var(--muted-color);
+  font-size: var(--font-size-xs);
 }
 </style>

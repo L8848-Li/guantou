@@ -12,18 +12,26 @@
  *   /--muted-color（次要文字）/--border-color（描边）/--accent-color（品牌强调）
  *   /--danger-color / --warning-color / --success-color（语义色）
  *   /--on-accent-color（强调色背景上的文字/图标）
+ * - 派生色：--text-secondary-color（正文与次要文字之间）/--surface-subtle-color（弱底色，
+ *   如按钮/禁用态背景）/--accent-subtle-color（强调色浅底，如徽章）
+ *   /--danger-subtle-color（危险色浅底）/--on-danger-color（危险色实心背景上的文字）
  * - 字号：--font-size-xs..xl；间距：--space-1..5；圆角：--radius-sm/md/lg/pill
  */
 
 @mixin light-color-tokens {
   --page-color: #f6f7f3;
   --surface-color: #ffffff;
+  --surface-subtle-color: #f2f4ef;
   --text-color: #1d2a24;
+  --text-secondary-color: #425148;
   --muted-color: #647068;
   --border-color: #e1e6dc;
   --accent-color: #1f5c43;
+  --accent-subtle-color: #e8f1eb;
   --on-accent-color: #ffffff;
   --danger-color: #d54941;
+  --danger-subtle-color: #fff1ed;
+  --on-danger-color: #ffffff;
   --warning-color: #ed7b2f;
   --success-color: #2ba471;
 }
@@ -31,12 +39,17 @@
 @mixin dark-color-tokens {
   --page-color: #121915;
   --surface-color: #1d2822;
+  --surface-subtle-color: #26312b;
   --text-color: #edf4ef;
+  --text-secondary-color: #c3d1c7;
   --muted-color: #a9b8ae;
   --border-color: #34443a;
   --accent-color: #69b58b;
+  --accent-subtle-color: #24402f;
   --on-accent-color: #10201a;
   --danger-color: #fb8f86;
+  --danger-subtle-color: #46282a;
+  --on-danger-color: #2b1010;
   --warning-color: #f5a56c;
   --success-color: #5fce9f;
 }
@@ -87,3 +100,36 @@ html[data-theme='dark'] page {
 .theme-dark {
   @include dark-color-tokens;
 }
+
+/*
+ * TDesign UniApp 品牌对齐：把 @tdesign/uniapp/theme.less 注入的 --td-* 变量
+ * 映射到项目品牌色，使直接使用的 t-* 组件（picker/popup/toast 等）与全站视觉一致。
+ * 暗色模式下 TDesign 组件保持浅色（其暗色跟随系统 media query，
+ * 与项目 data-theme 机制不同步，待后续版本对齐）。
+ */
+@mixin tdesign-brand-overrides {
+  --td-brand-color-1: #eef4f0;
+  --td-brand-color-2: #d8e6dd;
+  --td-brand-color-3: #b3cfbf;
+  --td-brand-color-4: #87b39d;
+  --td-brand-color-5: #57937a;
+  --td-brand-color-6: #1f5c43;
+  --td-brand-color-7: #194a36;
+  --td-brand-color-8: #123a2a;
+  --td-brand-color-9: #0c291e;
+  --td-brand-color-10: #071a13;
+  --td-primary-color-6: var(--accent-color);
+  --td-error-color-6: var(--danger-color);
+  --td-warning-color-6: var(--warning-color);
+  --td-success-color-6: var(--success-color);
+}
+
+page {
+  @include tdesign-brand-overrides;
+}
+
+/* #ifdef H5 */
+:root {
+  @include tdesign-brand-overrides;
+}
+/* #endif */

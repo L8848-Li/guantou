@@ -42,33 +42,33 @@ export default {
 
 <style scoped>
 .empty-state {
-  padding: 72rpx 24rpx;
+  padding: 72rpx var(--space-3);
   text-align: center;
-  color: #7a867d;
+  color: var(--muted-color);
 }
 
 .empty-title {
   font-size: 30rpx;
   font-weight: 700;
-  color: #425148;
+  color: var(--text-secondary-color);
 }
 
 .empty-description {
   margin-top: 12rpx;
-  font-size: 26rpx;
+  font-size: var(--font-size-sm);
   line-height: 1.6;
 }
 
 .empty-action {
-  margin-top: 24rpx;
+  margin-top: var(--space-3);
   width: auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #1f5c43;
-  color: #fff;
-  border-radius: 12rpx;
-  font-size: 26rpx;
+  background: var(--accent-color);
+  color: var(--on-accent-color);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
   padding: 0 28rpx;
 }
 </style>

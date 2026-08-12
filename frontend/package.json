@@ -66,6 +66,7 @@
     "@dcloudio/uni-quickapp-webview": "3.0.0-4080720251210001",
     "@dcloudio/uni-ui": "^1.4.24",
     "@rollup/plugin-alias": "^4.0.3",
+    "@tdesign/uniapp": "^0.10.3",
     "marked": "^4.0.18",
     "postcss": "^8.1.0",
     "vue": "^3.5.40"
@@ -87,6 +88,7 @@
     "eslint-plugin-import": "^2.27.4",
     "eslint-plugin-vue": "^9.9.0",
     "jsdom": "^29.1.1",
+    "less": "^4.8.1",
     "mini-types": "*",
     "miniprogram-api-typings": "*",
     "playwright": "^1.61.1",

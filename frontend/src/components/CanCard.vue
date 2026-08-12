@@ -188,10 +188,10 @@ export default {
 
 <style scoped>
 .can-card {
-  background: #fff;
-  border: 1px solid #e1e6dc;
-  border-radius: 12rpx;
-  padding: 24rpx;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
   margin-bottom: 18rpx;
 }
 
@@ -211,16 +211,16 @@ export default {
 
 .status {
   flex: 0 0 auto;
-  font-size: 24rpx;
-  color: #1f5c43;
-  background: #e8f1eb;
-  padding: 6rpx 14rpx;
-  border-radius: 999rpx;
+  font-size: var(--font-size-xs);
+  color: var(--accent-color);
+  background: var(--accent-subtle-color);
+  padding: 6rpx var(--space-2);
+  border-radius: var(--radius-pill);
 }
 
 .concept {
   margin-top: 14rpx;
-  color: #33463b;
+  color: var(--text-secondary-color);
 }
 
 .author-row {
@@ -228,15 +228,15 @@ export default {
   align-items: center;
   gap: 12rpx;
   margin-top: 18rpx;
-  color: #58675e;
-  font-size: 24rpx;
+  color: var(--muted-color);
+  font-size: var(--font-size-xs);
 }
 
 .author-avatar {
   width: 44rpx;
   height: 44rpx;
   border-radius: 50%;
-  background: #e6ebe3;
+  background: var(--surface-subtle-color);
 }
 
 .author-name {
@@ -246,13 +246,13 @@ export default {
 }
 
 .author-action {
-  color: #7d897f;
+  color: var(--muted-color);
 }
 
 .meta {
   margin-top: 14rpx;
-  color: #7a867d;
-  font-size: 24rpx;
+  color: var(--muted-color);
+  font-size: var(--font-size-xs);
 }
 
 .play-button {
@@ -260,10 +260,10 @@ export default {
   min-height: 68rpx;
   margin: 20rpx 0 0;
   padding: 0 20rpx;
-  border: 1px solid #cbd8cb;
-  border-radius: 999rpx;
-  background: #f4f8f3;
-  color: #1f5c43;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-pill);
+  background: var(--surface-subtle-color);
+  color: var(--accent-color);
   font-size: 25rpx;
   display: flex;
   align-items: center;
@@ -276,9 +276,9 @@ export default {
 }
 
 .play-button[disabled] {
-  background: #f2f3ef;
-  color: #899289;
-  border-color: #e2e5df;
+  background: var(--surface-subtle-color);
+  color: var(--muted-color);
+  border-color: var(--border-color);
 }
 
 .play-icon {
@@ -302,17 +302,17 @@ export default {
 .owner-actions button {
   width: auto;
   margin: 0;
-  padding: 0 24rpx;
-  border-radius: 999rpx;
-  background: #edf4ea;
-  color: #1f5c43;
-  font-size: 24rpx;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--surface-subtle-color);
+  color: var(--accent-color);
+  font-size: var(--font-size-xs);
   line-height: 60rpx;
 }
 
 .owner-actions button.danger {
-  background: #fff1ed;
-  color: #9b3a2d;
+  background: var(--danger-subtle-color);
+  color: var(--danger-color);
 }
 
 .owner-actions button::after {
@@ -324,16 +324,16 @@ export default {
   margin: 0;
   padding: 0 10rpx;
   border: 0;
-  border-radius: 10rpx;
-  background: #f2f4ef;
-  color: #59665e;
-  font-size: 24rpx;
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle-color);
+  color: var(--text-secondary-color);
+  font-size: var(--font-size-xs);
   line-height: 62rpx;
 }
 
 .social-button.active {
-  background: #f7e9e5;
-  color: #9a3f31;
+  background: var(--danger-subtle-color);
+  color: var(--danger-color);
 }
 
 .social-button::after {

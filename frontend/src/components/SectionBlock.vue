@@ -70,9 +70,9 @@ export default {
 
 <style scoped>
 .section-block {
-  background: #ffffff;
-  border: 1px solid #e1e6dc;
-  border-radius: 14rpx;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
   padding: 28rpx;
   margin-bottom: 20rpx;
   box-sizing: border-box;
@@ -82,8 +82,8 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16rpx;
-  margin-bottom: 16rpx;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
 }
 
 .section-title {
@@ -93,7 +93,7 @@ export default {
 
 .section-action {
   flex: 0 0 auto;
-  color: #1f5c43;
-  font-size: 26rpx;
+  color: var(--accent-color);
+  font-size: var(--font-size-sm);
 }
 </style>

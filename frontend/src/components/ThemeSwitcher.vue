@@ -63,9 +63,9 @@ export default {
 .theme-switcher {
   margin-top: 28rpx;
   padding: 26rpx;
-  border: 1px solid var(--border-color, #e1e6dc);
-  border-radius: 14rpx;
-  background: var(--surface-color, #ffffff);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--surface-color);
 }
 
 .theme-heading {
@@ -82,7 +82,7 @@ export default {
 
 .theme-copy,
 .theme-current {
-  color: var(--muted-color, #6c776e);
+  color: var(--muted-color);
   font-size: 23rpx;
 }
 
@@ -99,12 +99,12 @@ export default {
 
 .theme-option {
   margin: 0;
-  padding: 0 8rpx;
-  border: 1px solid var(--border-color, #d9e0d6);
-  border-radius: 999rpx;
-  background: var(--surface-color, #ffffff);
-  color: var(--text-color, #1d2a24);
-  font-size: 24rpx;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-pill);
+  background: var(--surface-color);
+  color: var(--text-color);
+  font-size: var(--font-size-xs);
   line-height: 62rpx;
 }
 
@@ -113,8 +113,8 @@ export default {
 }
 
 .theme-option.active {
-  border-color: var(--accent-color, #1f5c43);
-  background: var(--accent-color, #1f5c43);
-  color: #ffffff;
+  border-color: var(--accent-color);
+  background: var(--accent-color);
+  color: var(--on-accent-color);
 }
 </style>

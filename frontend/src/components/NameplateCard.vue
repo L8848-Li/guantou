@@ -67,15 +67,15 @@ export default {
 <style scoped>
 .plate {
   padding: 20rpx 0;
-  border-bottom: 1px solid #eef1eb;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .primary-plate {
-  background: #f7fbf5;
-  border: 1px solid #d7e6d3;
-  border-radius: 12rpx;
+  background: var(--accent-subtle-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
   padding: 20rpx;
-  margin-bottom: 16rpx;
+  margin-bottom: var(--space-2);
 }
 
 .plate-title {
@@ -93,35 +93,35 @@ export default {
 
 .primary {
   flex: 0 0 auto;
-  color: #1f5c43;
-  font-size: 24rpx;
-  background: #e8f1eb;
+  color: var(--accent-color);
+  font-size: var(--font-size-xs);
+  background: var(--accent-subtle-color);
   padding: 4rpx 12rpx;
-  border-radius: 999rpx;
+  border-radius: var(--radius-pill);
 }
 
 .plate-def,
 .plate-source {
-  margin-top: 8rpx;
-  color: #56645b;
+  margin-top: var(--space-1);
+  color: var(--text-secondary-color);
   line-height: 1.5;
 }
 
 .plate-source {
-  font-size: 24rpx;
-  color: #7a867d;
+  font-size: var(--font-size-xs);
+  color: var(--muted-color);
 }
 
 .vote {
   margin: 14rpx 0 0;
-  font-size: 24rpx;
-  background: #fff;
-  border: 1px solid #cbd5c5;
-  color: #2f4638;
+  font-size: var(--font-size-xs);
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
 }
 
 .vote[disabled] {
-  color: #7a867d;
-  background: #f3f5f1;
+  color: var(--muted-color);
+  background: var(--surface-subtle-color);
 }
 </style>

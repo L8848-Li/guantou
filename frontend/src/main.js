@@ -1,4 +1,5 @@
 import { createSSRApp } from 'vue';
+import '@tdesign/uniapp/theme.less';
 import share from '@/services/shareMessages';
 // Api函数polyfill（目前为实验版本，如不需要，可删除！）';
 import Polyfill from '@/polyfill/polyfill';
