@@ -525,6 +525,7 @@ class CanViewSet(viewsets.ModelViewSet):
             "nameplates__dialect",
             "nameplates__pronunciation",
             "nameplates__creator",
+            "nameplates__supports",
         )
         .annotate(
             nameplate_count=Count(

@@ -2,11 +2,14 @@ import json
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
 from django.http import JsonResponse
 from django.test import Client, RequestFactory, TestCase
+from django.test.utils import CaptureQueriesContext
 from rest_framework.exceptions import APIException
 from rest_framework.test import APIClient
+
+from user.models import UserInfo
 
 from utils.exceptions.handler import drf_exception_handler
 from utils.exceptions.middleware import ExceptionMiddleware
@@ -992,6 +995,121 @@ class NameplateApiTests(DomainFixture):
             },
         )
         self.assertEqual([item["id"] for item in response.data["results"]], [book.id])
+
+
+class CanNameplatePreviewTests(DomainFixture):
+    PREVIEW_KEYS = {
+        "id",
+        "display_text",
+        "definition",
+        "weight",
+        "support_count",
+        "supported_by_current_user",
+    }
+
+    def can_payload(self, response, can_id):
+        self.assertEqual(response.status_code, 200)
+        return next(item for item in response.data["results"] if item["id"] == can_id)
+
+    def test_previews_sorted_by_weight_desc_and_capped_at_three(self):
+        can = self.make_can()
+        for text, weight in [("a", 10), ("b", 5), ("c", 30), ("d", 1), ("e", 20)]:
+            self.make_nameplate(can=can, text_content=text, weight=weight)
+
+        item = self.can_payload(self.client.get("/cans/"), can.id)
+        previews = item["nameplate_previews"]
+        self.assertEqual([p["weight"] for p in previews], [30, 20, 10])
+        self.assertEqual([p["display_text"] for p in previews], ["c", "e", "a"])
+        self.assertEqual(item["nameplate_total"], 5)
+        self.assertEqual(item["nameplate_count"], 5)
+
+    def test_supported_by_current_user_for_logged_in_and_guest(self):
+        can = self.make_can()
+        supported = self.make_nameplate(can=can, text_content="甲", weight=3)
+        not_supported = self.make_nameplate(can=can, text_content="乙", weight=2)
+        self.client.put(f"/nameplates/{supported.id}/support/", {}, format="json")
+
+        item = self.can_payload(self.client.get("/cans/"), can.id)
+        by_id = {p["id"]: p for p in item["nameplate_previews"]}
+        self.assertTrue(by_id[supported.id]["supported_by_current_user"])
+        self.assertEqual(by_id[supported.id]["support_count"], 1)
+        self.assertFalse(by_id[not_supported.id]["supported_by_current_user"])
+        self.assertEqual(by_id[not_supported.id]["support_count"], 0)
+
+        self.client.force_authenticate(None)
+        guest_item = self.can_payload(self.client.get("/cans/"), can.id)
+        guest_by_id = {p["id"]: p for p in guest_item["nameplate_previews"]}
+        self.assertFalse(guest_by_id[supported.id]["supported_by_current_user"])
+        self.assertFalse(guest_by_id[not_supported.id]["supported_by_current_user"])
+        # 支持数对游客仍然如实返回，仅“我是否支持”恒为 False。
+        self.assertEqual(guest_by_id[supported.id]["support_count"], 1)
+
+    def test_non_active_nameplates_excluded_and_total_counts_active_only(self):
+        can = self.make_can()
+        active_first = self.make_nameplate(can=can, text_content="活一", weight=5)
+        active_second = self.make_nameplate(can=can, text_content="活二", weight=4)
+        withdrawn = self.make_nameplate(
+            can=can,
+            text_content="已撤回",
+            weight=99,
+            status=Nameplate.Status.WITHDRAWN,
+        )
+        superseded = self.make_nameplate(
+            can=can,
+            text_content="已修订",
+            weight=98,
+            status=Nameplate.Status.SUPERSEDED,
+        )
+
+        item = self.can_payload(self.client.get("/cans/"), can.id)
+        preview_ids = [p["id"] for p in item["nameplate_previews"]]
+        self.assertEqual(preview_ids, [active_first.id, active_second.id])
+        self.assertNotIn(withdrawn.id, preview_ids)
+        self.assertNotIn(superseded.id, preview_ids)
+        # nameplate_total 与 nameplate_count 一致：只统计 active 铭牌。
+        self.assertEqual(item["nameplate_total"], 2)
+        self.assertEqual(item["nameplate_count"], 2)
+
+    def test_feed_variants_keep_preview_structure(self):
+        info = UserInfo.objects.create(
+            user=self.user, primary_dialect=self.dialect, nickname="collector"
+        )
+        info.followed_dialects.add(self.dialect)
+        can = self.make_can()
+        self.make_nameplate(can=can, text_content="牌", weight=1)
+
+        for feed in ("dialect", "following", "recommended"):
+            with self.subTest(feed=feed):
+                response = self.client.get("/cans/", {"feed": feed})
+                self.assertEqual(response.status_code, 200)
+                item = self.can_payload(response, can.id)
+                self.assertEqual(item["nameplate_total"], 1)
+                for preview in item["nameplate_previews"]:
+                    self.assertEqual(set(preview), self.PREVIEW_KEYS)
+
+    def test_preview_does_not_introduce_per_nameplate_queries(self):
+        def query_count():
+            with CaptureQueriesContext(connection) as context:
+                response = self.client.get("/cans/")
+            self.assertEqual(response.status_code, 200)
+            return len(context.captured_queries)
+
+        cans = [self.make_can(), self.make_can()]
+        for can in cans:
+            for weight in (3, 2, 1):
+                plate = self.make_nameplate(can=can, weight=weight)
+                NameplateSupport.objects.create(nameplate=plate, user=self.other)
+        base = query_count()
+
+        # 在既有罐上追加铭牌与支持记录：罐头数不变，铭牌/支持仍是批量预取。
+        for can in cans:
+            for weight in (6, 5, 4):
+                plate = self.make_nameplate(can=can, weight=weight)
+                NameplateSupport.objects.create(nameplate=plate, user=self.staff)
+                NameplateSupport.objects.create(nameplate=plate, user=self.other)
+        grown = query_count()
+        # 铭牌与支持数量翻倍，预览不产生逐铭牌/逐罐额外查询。
+        self.assertEqual(base, grown)
 
 
 class CanQueryAndStateTests(DomainFixture):
