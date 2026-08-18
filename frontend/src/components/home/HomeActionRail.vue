@@ -113,7 +113,7 @@ export default {
       liked: Boolean(this.can.liked_by_me),
       likeCount: Number(this.can.like_count || 0),
       likeBusy: false,
-      following: false,
+      following: Boolean(this.can.recorder_followed_by_me),
       followBusy: false,
     };
   },
@@ -126,6 +126,7 @@ export default {
     can(next) {
       this.liked = Boolean(next.liked_by_me);
       this.likeCount = Number(next.like_count || 0);
+      this.following = Boolean(next.recorder_followed_by_me);
     },
   },
   methods: {
@@ -141,8 +142,11 @@ export default {
       }
     },
     async toggleFollow() {
-      if (!requireAuth('follow', { page: 'home_feed', canId: this.can.id })) return;
       if (this.followBusy || !this.can.recorder) return;
+      // 作者即本人时不提供关注自己。
+      const myId = uni.getStorageSync('id');
+      if (myId && Number(this.can.recorder.id) === Number(myId)) return;
+      if (!requireAuth('follow', { page: 'home_feed', canId: this.can.id })) return;
       this.followBusy = true;
       const target = !this.following;
       this.following = target;

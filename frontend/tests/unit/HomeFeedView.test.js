@@ -1,0 +1,145 @@
+import { flushPromises, mount } from '@vue/test-utils';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/services/homeFeed', () => ({
+  getTodayCan: vi.fn(),
+  listHomeFeed: vi.fn(),
+}));
+
+vi.mock('@/services/authGuard', () => ({
+  isLoggedIn: vi.fn(() => true),
+  requireAuth: vi.fn(() => true),
+}));
+
+vi.mock('@/routers/login', () => ({
+  toLoginPage: vi.fn(),
+}));
+
+vi.mock('@/utils/audio', () => ({
+  preload: vi.fn(),
+  stopAudio: vi.fn(),
+}));
+
+import HomeFeed from '@/components/home/HomeFeed.vue';
+import { getTodayCan, listHomeFeed } from '@/services/homeFeed';
+import { isLoggedIn, requireAuth } from '@/services/authGuard';
+import { toLoginPage } from '@/routers/login';
+
+function setupEnv({ userInfo = null } = {}) {
+  globalThis.uni = {
+    getStorageSync: vi.fn(() => ''),
+    navigateTo: vi.fn(),
+    showToast: vi.fn(),
+  };
+  globalThis.getCurrentPages = vi.fn(() => []);
+  globalThis.getApp = vi.fn(() => ({ globalData: { userInfo } }));
+}
+
+function mountFeed(tab) {
+  return mount(HomeFeed, {
+    props: { tab },
+    global: {
+      stubs: {
+        CanStageCard: true,
+        HomeActionRail: true,
+      },
+    },
+  });
+}
+
+describe('HomeFeed five states', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isLoggedIn.mockReturnValue(true);
+    requireAuth.mockReturnValue(true);
+    setupEnv();
+  });
+
+  it('shows the error state on load failure and recovers on retry', async () => {
+    listHomeFeed
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce({
+        results: [{ id: 1, audio_url: 'https://example.test/a.mp3' }],
+        next: null,
+      });
+
+    const wrapper = mountFeed('recommended');
+    await flushPromises();
+
+    expect(wrapper.find('.home-feed__error').exists()).toBe(true);
+    expect(wrapper.text()).toContain('内容加载失败');
+
+    await wrapper.find('.home-feed__error-retry').trigger('tap');
+    await flushPromises();
+
+    expect(wrapper.find('.home-feed__error').exists()).toBe(false);
+    expect(wrapper.find('.home-feed__swiper').exists()).toBe(true);
+    expect(listHomeFeed).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows the empty state copy and action when there are no results', async () => {
+    listHomeFeed.mockResolvedValue({ results: [], next: null });
+
+    const wrapper = mountFeed('recommended');
+    await flushPromises();
+
+    expect(wrapper.find('.home-feed__empty').exists()).toBe(true);
+    expect(wrapper.text()).toContain('这里还没有罐头');
+
+    await wrapper.find('.home-feed__empty-action').trigger('tap');
+
+    expect(requireAuth).toHaveBeenCalledWith('record_can', { page: 'home_feed' });
+    expect(uni.navigateTo).toHaveBeenCalledWith({ url: '/pages/cans/create' });
+  });
+
+  it('shows a login guidance for guests on the following tab', async () => {
+    isLoggedIn.mockReturnValue(false);
+    listHomeFeed.mockResolvedValue({ results: [], next: null });
+
+    const wrapper = mountFeed('following');
+    await flushPromises();
+
+    expect(wrapper.find('.home-feed__guidance').exists()).toBe(true);
+    expect(wrapper.text()).toContain('登录后看关注流');
+    expect(wrapper.find('.home-feed__swiper').exists()).toBe(false);
+
+    await wrapper.find('.home-feed__guidance-action').trigger('tap');
+
+    expect(toLoginPage).toHaveBeenCalled();
+  });
+
+  it('shows a dialect picker guidance on the dialect tab without a primary dialect', async () => {
+    setupEnv({ userInfo: {} });
+    listHomeFeed.mockResolvedValue({ results: [], next: null });
+
+    const wrapper = mountFeed('dialect');
+    await flushPromises();
+
+    expect(wrapper.find('.home-feed__guidance').exists()).toBe(true);
+    expect(wrapper.text()).toContain('先选一个主方言');
+
+    await wrapper.find('.home-feed__guidance-action').trigger('tap');
+
+    expect(uni.navigateTo).toHaveBeenCalledWith({ url: '/pages/users/onboarding' });
+  });
+
+  it('renders the skeleton while the first page is loading', async () => {
+    listHomeFeed.mockReturnValue(new Promise(() => {}));
+
+    const wrapper = mountFeed('recommended');
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('.home-feed__skeleton').exists()).toBe(true);
+    expect(wrapper.find('.home-feed__swiper').exists()).toBe(false);
+  });
+
+  it('loads the today tab through getTodayCan', async () => {
+    getTodayCan.mockResolvedValue({ id: 8, audio_url: 'https://example.test/t.mp3' });
+
+    const wrapper = mountFeed('today');
+    await flushPromises();
+
+    expect(getTodayCan).toHaveBeenCalled();
+    expect(wrapper.find('.home-feed__swiper').exists()).toBe(true);
+  });
+});

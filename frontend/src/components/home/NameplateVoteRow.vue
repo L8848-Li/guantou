@@ -43,6 +43,10 @@ export default {
       type: Object,
       required: true,
     },
+    canId: {
+      type: [Number, String],
+      default: null,
+    },
   },
   emits: ['support', 'unsupport'],
   data() {
@@ -62,7 +66,13 @@ export default {
     async toggle() {
       if (this.busy) return;
       const target = !this.supported;
-      if (target && !requireAuth('nameplate_support', { nameplateId: this.nameplate.id })) {
+      if (
+        target
+        && !requireAuth('nameplate_support', {
+          nameplateId: this.nameplate.id,
+          canId: this.canId,
+        })
+      ) {
         return;
       }
       this.busy = true;

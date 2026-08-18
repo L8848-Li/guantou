@@ -70,6 +70,15 @@ function todayStamp() {
   return `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
 }
 
+/**
+ * 本地日期序号：与 todayStamp 缓存键同源（都按本地日历日），
+ * 避免 UTC epoch 天数在 UTC+ 时区导致轮换延迟与跨日重复。
+ */
+function localDaySerial() {
+  const now = new Date();
+  return Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000;
+}
+
 function readTodayCache() {
   try {
     const raw = uni.getStorageSync(TODAY_CAN_STORAGE_KEY);
@@ -102,8 +111,7 @@ export async function getTodayCan() {
     const discovery = await getDiscovery();
     const hotCans = discovery.hot_cans || [];
     if (!hotCans.length) throw new Error('no hot cans');
-    const daySerial = Math.floor(Date.now() / 86400000);
-    const can = hotCans[daySerial % hotCans.length];
+    const can = hotCans[localDaySerial() % hotCans.length];
     writeTodayCache(can);
     return can;
   } catch (error) {

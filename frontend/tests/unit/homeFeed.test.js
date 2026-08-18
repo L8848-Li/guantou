@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/services/guantou', () => ({
   getCan: vi.fn(),
@@ -29,9 +29,17 @@ function setupStorage() {
   return store;
 }
 
+function localDaySerial(date = new Date()) {
+  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000;
+}
+
 describe('homeFeed service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   describe('listHomeFeed', () => {
@@ -89,13 +97,13 @@ describe('homeFeed service', () => {
   });
 
   describe('getTodayCan', () => {
-    it('rotates deterministically by day serial and caches per day', async () => {
+    it('rotates deterministically by local day serial and caches per day', async () => {
       const store = setupStorage();
       const hotCans = [{ id: 1 }, { id: 2 }, { id: 3 }];
       getDiscovery.mockResolvedValue({ hot_cans: hotCans });
 
       const first = await getTodayCan();
-      const daySerial = Math.floor(Date.now() / 86400000);
+      const daySerial = localDaySerial();
       expect(first).toEqual(hotCans[daySerial % hotCans.length]);
       expect(store.home_today_can).toBeTruthy();
 
@@ -109,22 +117,51 @@ describe('homeFeed service', () => {
       setupStorage();
       const hotCans = [{ id: 1 }, { id: 2 }];
       getDiscovery.mockResolvedValue({ hot_cans: hotCans });
-      const baseSerial = Math.floor(Date.now() / 86400000);
-      const expectedToday = hotCans[baseSerial % 2];
-      const expectedTomorrow = hotCans[(baseSerial + 1) % 2];
+      const expectedToday = hotCans[localDaySerial() % 2];
 
       const first = await getTodayCan();
       expect(first).toEqual(expectedToday);
 
-      // 模拟跨天：清掉当日缓存，并把 Date.now 拨到第二天
+      // 模拟跨天：清掉当日缓存，并把系统时钟拨到第二天
       uni.removeStorageSync('home_today_can');
-      const nowSpy = vi.spyOn(Date, 'now').mockReturnValue((baseSerial + 1) * 86400000);
-      try {
-        const next = await getTodayCan();
-        expect(next).toEqual(expectedTomorrow);
-      } finally {
-        nowSpy.mockRestore();
-      }
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      vi.useFakeTimers();
+      vi.setSystemTime(tomorrow);
+      const expectedTomorrow = hotCans[localDaySerial(tomorrow) % 2];
+      const next = await getTodayCan();
+      expect(next).toEqual(expectedTomorrow);
+      expect(next).not.toEqual(first);
+    });
+
+    it('rotates on local midnight and stays stable within a local day', async () => {
+      setupStorage();
+      const hotCans = [{ id: 1 }, { id: 2 }];
+      getDiscovery.mockResolvedValue({ hot_cans: hotCans });
+
+      // 以本地日历日为口径：本地午夜刚过即应轮换，同一天内保持稳定。
+      const localTime = (dayOffset, hours) => {
+        const date = new Date();
+        date.setDate(date.getDate() + dayOffset);
+        date.setHours(hours, 30, 0, 0);
+        return date;
+      };
+
+      vi.useFakeTimers();
+      vi.setSystemTime(localTime(0, 0)); // 今天本地 00:30
+      const earlyMorning = await getTodayCan();
+
+      // 拨到当天本地正午：本地日期未变，序号也不应变化。
+      uni.removeStorageSync('home_today_can');
+      vi.setSystemTime(localTime(0, 12));
+      const noon = await getTodayCan();
+      expect(noon).toEqual(earlyMorning);
+
+      // 跨到下一个本地日（午夜刚过），序号必须轮换。
+      uni.removeStorageSync('home_today_can');
+      vi.setSystemTime(localTime(1, 0));
+      const nextDay = await getTodayCan();
+      expect(nextDay).not.toEqual(earlyMorning);
     });
 
     it('falls back to the first recommended can when discovery fails', async () => {

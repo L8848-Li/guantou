@@ -111,6 +111,7 @@
             v-for="plate in previews"
             :key="plate.id"
             :nameplate="plate"
+            :can-id="can.id"
           />
           <view
             v-if="!previews.length"

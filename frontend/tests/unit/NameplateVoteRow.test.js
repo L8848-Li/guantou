@@ -6,8 +6,13 @@ vi.mock('@/services/guantou', () => ({
   unsupportNameplate: vi.fn(),
 }));
 
+vi.mock('@/services/authGuard', () => ({
+  requireAuth: vi.fn(() => true),
+}));
+
 import NameplateVoteRow from '@/components/home/NameplateVoteRow.vue';
 import { supportNameplate, unsupportNameplate } from '@/services/guantou';
+import { requireAuth } from '@/services/authGuard';
 
 function setupUni(token = 'token-value') {
   globalThis.uni = {
@@ -20,7 +25,7 @@ function setupUni(token = 'token-value') {
   globalThis.getCurrentPages = vi.fn(() => []);
 }
 
-function mountRow(overrides = {}) {
+function mountRow(overrides = {}, extraProps = {}) {
   return mount(NameplateVoteRow, {
     props: {
       nameplate: {
@@ -31,6 +36,7 @@ function mountRow(overrides = {}) {
         supported_by_current_user: false,
         ...overrides,
       },
+      ...extraProps,
     },
   });
 }
@@ -108,5 +114,36 @@ describe('NameplateVoteRow optimistic voting', () => {
     expect(supportNameplate).toHaveBeenCalledTimes(1);
     resolveSupport({ support_count: 4, supported_by_current_user: true });
     await wrapper.vm.$nextTick();
+  });
+
+  it('passes canId into the auth journey context when support requires login', async () => {
+    requireAuth.mockReturnValue(true);
+    supportNameplate.mockResolvedValue({});
+    const wrapper = mountRow({}, { canId: 33 });
+
+    await wrapper.find('.vote-row__support').trigger('tap');
+    await wrapper.vm.$nextTick();
+
+    expect(requireAuth).toHaveBeenCalledWith('nameplate_support', {
+      nameplateId: 7,
+      canId: 33,
+    });
+    expect(supportNameplate).toHaveBeenCalledWith(7);
+  });
+
+  it('stops when the auth guard intercepts (guest support)', async () => {
+    requireAuth.mockReturnValue(false);
+    const wrapper = mountRow({}, { canId: 33 });
+
+    await wrapper.find('.vote-row__support').trigger('tap');
+    await wrapper.vm.$nextTick();
+
+    expect(requireAuth).toHaveBeenCalledWith('nameplate_support', {
+      nameplateId: 7,
+      canId: 33,
+    });
+    expect(supportNameplate).not.toHaveBeenCalled();
+    expect(wrapper.vm.supported).toBe(false);
+    expect(wrapper.vm.supportCount).toBe(3);
   });
 });

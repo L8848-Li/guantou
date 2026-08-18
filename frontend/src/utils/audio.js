@@ -18,6 +18,13 @@ function releasePreload() {
   context.destroy();
 }
 
+/**
+ * 释放预缓冲句柄（页面 onHide/onUnload 回收路径使用）。
+ */
+export function releasePreloadAudio() {
+  releasePreload();
+}
+
 function stopCurrentAudio() {
   disposeManagedHandle();
   if (!currentAudioContext) return;
@@ -66,6 +73,10 @@ export function playAudio(src, warn = true) {
       audioElement.currentTime = 0;
     },
     destroy() {
+      // 先置空事件回调再清 src，避免清源触发的异步迟到 error
+      // 误杀后续受控播放并弹出误导性 toast。
+      audioElement.onerror = null;
+      audioElement.onended = null;
       audioElement.src = '';
       if (webAudioContext && typeof webAudioContext.close === 'function') {
         webAudioContext.close();
@@ -74,6 +85,7 @@ export function playAudio(src, warn = true) {
   };
   currentAudioContext = webPlayback;
   audioElement.onerror = () => {
+    if (currentAudioContext !== webPlayback) return;
     uni.showToast({ title: '播放失败', icon: 'none' });
     stopCurrentAudio();
   };
@@ -83,6 +95,7 @@ export function playAudio(src, warn = true) {
   const playPromise = audioElement.play();
   if (playPromise && typeof playPromise.catch === 'function') {
     playPromise.catch(() => {
+      if (currentAudioContext !== webPlayback) return;
       uni.showToast({ title: '播放失败', icon: 'none' });
       stopCurrentAudio();
     });
@@ -112,6 +125,8 @@ export function playAudio(src, warn = true) {
 
 export function stopAudio() {
   stopCurrentAudio();
+  // 页面 onHide/onUnload 调 stopAudio 时一并回收预缓冲句柄。
+  releasePreload();
 }
 
 /**

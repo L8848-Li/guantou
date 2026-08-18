@@ -82,9 +82,11 @@ test('guest browses immersive feed, plays audio, and opens search', async ({ pag
   await page.route('**/discovery/**', async (route) => {
     await route.fulfill({
       json: {
+        // 与 DiscoveryView 实际契约对齐：hot_cans/hot_flavors/daily_flavor/topics
         hot_cans: [canItem],
-        featured_flavors: [],
-        recent_cans: [],
+        hot_flavors: [],
+        daily_flavor: null,
+        topics: [],
       },
     });
   });
