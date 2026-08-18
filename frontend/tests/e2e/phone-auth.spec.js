@@ -2,7 +2,8 @@ import { expect, test } from '@playwright/test';
 
 test('guest signs in with the visible demo phone code', async ({ page }) => {
   await page.goto('/');
-  await page.locator('.quick-card.mine').click();
+  /* 新首页：「我的」入口在底部 HomeTabBar（role=button + aria-label） */
+  await page.getByRole('button', { name: '我的' }).click();
   await expect(page.getByText('还没有登录')).toBeVisible();
   await page.locator('.login-button').click();
 

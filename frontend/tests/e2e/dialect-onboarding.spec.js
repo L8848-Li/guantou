@@ -104,5 +104,6 @@ test('new user selects a primary dialect and reaches home', async ({ page }) => 
   await page.getByText('暂时跳过').click();
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.locator('.brand')).toHaveText('乡声集盒');
+  /* 新首页品牌小标：「乡声集盒 · 把乡音装进罐头」 */
+  await expect(page.locator('.home-top-bar__brand')).toContainText('乡声集盒');
 });
