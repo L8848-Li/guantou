@@ -2,7 +2,10 @@
   "pages": [
     {
       "path": "pages/index",
-      "style": {}
+      "style": {
+        "backgroundColor": "#0a1410",
+        "backgroundColorDark": "#0a1410"
+      }
     },
     {
       "path": "pages/search",

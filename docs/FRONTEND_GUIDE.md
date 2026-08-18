@@ -110,6 +110,8 @@ pages/*.vue
 
 尺寸 Token：间距 `--space-1..5`（8–48rpx）；圆角 `--radius-sm/md/lg/pill`；字号 `--font-size-xs..xl`（24–36rpx）。
 
+沉浸式场景 Token（首页罐头流专用，固定深色）：`--immersive-*` / `--on-immersive-*` 系列定义在 tokens.scss 文末的 `immersive-color-tokens`，由 `.immersive-shell`（`pages/index.vue` 根节点）注入子树。**沉浸流固定深色、不随明暗主题翻转**；沉浸场景内的文字/图标/表面/波形/骨架屏一律消费 `--on-immersive-color`、`--on-immersive-muted-color`、`--immersive-surface-color`、`--immersive-wave-*-color`、`--immersive-skeleton-*-color` 等，不要复用明暗双套 Token（会随主题翻转导致沉浸流破功）。
+
 基础原语（`frontend/src/components/`，easycom 自动注册）：
 
 - `BaseButton`：`variant="primary|ghost|danger"`、`size="medium|small"`、`block`、`loading`，事件 `@click`。不要自写 `.primary-button` 类一次性按钮样式。

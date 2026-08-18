@@ -1,195 +1,78 @@
 <template>
-  <PageShell
-    :title="appName"
-    :show-back="false"
-    :scroll="isGuest"
-    :content-class="{ 'social-home-content': !isGuest }"
-    action-text="装罐"
-    @action="toCreate"
-  >
-    <view :class="['hero', { compact: !isGuest }]">
-      <view class="eyebrow">
-        方言词典 · 真实乡音
-      </view>
-      <view class="brand">
-        {{ appName }}
-      </view>
-      <view class="subtitle">
-        {{ heroSubtitle }}
-      </view>
-      <view
-        v-if="primaryDialect"
-        class="identity-note"
-      >
-        主方言 · {{ primaryDialect.qualified_code || primaryDialect.name }}
-      </view>
-    </view>
-
+  <view class="immersive-shell home-page">
+    <!-- 氛围光与肌理（沉浸壳自绘背景） -->
     <view
-      v-if="isGuest"
-      class="guest-note"
-    >
-      <text class="guest-note-title">
-        不登录也能查、能听
-      </text>
-      <text class="guest-note-copy">
-        先逛词典和公开罐头；需要提交乡音或支持铭牌时，我们再请你登录。
-      </text>
-    </view>
-
-    <view
-      class="search-box"
-      @tap="toSearch"
-    >
-      <text class="search-icon">
-        ⌕
-      </text>
-      <text class="search-placeholder">
-        搜方言词、写法、拼音或普通话概念
-      </text>
-      <text class="search-action">
-        去查词
-      </text>
-    </view>
-
-    <view
-      :class="['quick-grid', { compact: !isGuest }]"
-    >
-      <view
-        v-for="entry in quickEntries"
-        :key="entry.key"
-        :class="['quick-card', entry.key]"
-        @tap="entry.open"
-      >
-        <view class="quick-title">
-          {{ entry.title }}
-        </view>
-        <view class="quick-copy">
-          {{ entry.copy }}
-        </view>
-      </view>
-    </view>
-
-    <SectionBlock
-      v-if="isGuest"
-      :title="canSectionTitle"
-      action-text="全部"
-      @action="toCans"
-    >
-      <CanList
-        ref="homeCanList"
-        :fetcher="listCans"
-        :query="canQuery"
-        :scroll="false"
-        :show-load-more="false"
-        :max-items="5"
-        :empty-title="canEmptyTitle"
-        :empty-description="canEmptyDescription"
-        empty-action-text="装一罐"
-        @open="toCan"
-        @empty-action="toCreate"
-      />
-    </SectionBlock>
-    <SocialCanFeeds
-      v-else
-      ref="socialFeeds"
-      :fetcher="listCans"
-      @author="toUser"
-      @comment="toCan"
-      @open="toCan"
-      @share="prepareShare"
+      class="home-page__glow home-page__glow--top"
+      aria-hidden="true"
     />
-  </PageShell>
+    <view
+      class="home-page__glow home-page__glow--bottom"
+      aria-hidden="true"
+    />
+    <view
+      class="home-page__grain"
+      aria-hidden="true"
+    />
+
+    <HomeTopBar
+      class="home-page__top"
+      :active-tab="activeTab"
+      @change="switchTab"
+    />
+
+    <view class="home-page__body">
+      <HomeFeed
+        v-if="activeTab === 'today'"
+        :key="`today-${feedRevision}`"
+        tab="today"
+        @share="prepareShare"
+      />
+      <HomeFeed
+        v-else-if="activeTab === 'dialect'"
+        :key="`dialect-${feedRevision}`"
+        tab="dialect"
+        @share="prepareShare"
+      />
+      <HomeFeed
+        v-else-if="activeTab === 'following'"
+        :key="`following-${feedRevision}`"
+        tab="following"
+        @share="prepareShare"
+      />
+      <HomeFeed
+        v-else
+        :key="`recommended-${feedRevision}`"
+        tab="recommended"
+        @share="prepareShare"
+      />
+    </view>
+
+    <HomeTabBar active="home" />
+  </view>
 </template>
 
 <script>
-import CanList from '@/components/CanList.vue';
-import PageShell from '@/components/PageShell.vue';
-import SectionBlock from '@/components/SectionBlock.vue';
-import SocialCanFeeds from '@/components/SocialCanFeeds.vue';
-import { listCans } from '@/services/guantou';
-import { APP_NAME, SHARE_TITLE } from '@/const/branding';
-import { toUserPage } from '@/routers/user';
+import HomeFeed from '@/components/home/HomeFeed.vue';
+import HomeTabBar from '@/components/home/HomeTabBar.vue';
+import HomeTopBar from '@/components/home/HomeTopBar.vue';
+import { resolveDefaultTab } from '@/services/homeFeed';
+import { SHARE_TITLE } from '@/const/branding';
 import { canSharePayload } from '@/utils/shareCan';
+import { stopAudio } from '@/utils/audio';
 
 export default {
   components: {
-    CanList,
-    PageShell,
-    SectionBlock,
-    SocialCanFeeds,
+    HomeFeed,
+    HomeTabBar,
+    HomeTopBar,
   },
   data() {
-    const app = typeof getApp === 'function' ? getApp() : null;
     return {
-      appName: APP_NAME,
-      primaryDialect: app?.globalData?.userInfo?.primary_dialect || null,
+      activeTab: resolveDefaultTab(),
+      userSelectedTab: false,
       pendingShareCan: null,
+      feedRevision: 0,
     };
-  },
-  computed: {
-    isGuest() {
-      return !uni.getStorageSync('token');
-    },
-    heroSubtitle() {
-      return this.isGuest
-        ? '先查一个词，再听听它在不同地方怎么说'
-        : '把每一段乡音装进可校验的资料库';
-    },
-    canSectionTitle() {
-      return this.isGuest ? '公开乡音' : '待贴铭牌';
-    },
-    canQuery() {
-      return this.isGuest ? {} : { needs_label: 'true' };
-    },
-    canEmptyTitle() {
-      return this.isGuest ? '还没有公开罐头' : '还没有待贴铭牌的罐头';
-    },
-    canEmptyDescription() {
-      return this.isGuest
-        ? '可以先查词看看，或者录下第一段公开乡音。'
-        : '可以先装一罐乡音，后面的人就能继续贴铭牌。';
-    },
-    quickEntries() {
-      return [
-        {
-          key: 'shelf',
-          title: '集盒',
-          copy: '按主题收纳乡音',
-          open: this.toShelves,
-        },
-        {
-          key: 'can',
-          title: '装罐',
-          copy: '录下新的乡音',
-          open: this.toCreate,
-        },
-        {
-          key: 'atlas',
-          title: '图鉴',
-          copy: '看同一概念的不同写法',
-          open: this.toFlavors,
-        },
-        {
-          key: 'mine',
-          title: '我的',
-          copy: '贡献、积分和消息',
-          open: this.toMine,
-        },
-        {
-          key: 'discovery',
-          title: '发现',
-          copy: '热罐头与今日方言词',
-          open: this.toDiscovery,
-        },
-        {
-          key: 'circle',
-          title: '方言圈',
-          copy: '和同乡一起听与校验',
-          open: this.toCircles,
-        },
-      ];
-    },
   },
   onShareAppMessage() {
     if (this.pendingShareCan) return canSharePayload(this.pendingShareCan);
@@ -199,224 +82,97 @@ export default {
     };
   },
   onShow() {
-    const app = typeof getApp === 'function' ? getApp() : null;
-    this.primaryDialect = app?.globalData?.userInfo?.primary_dialect || null;
+    /* 刷新登录态与主方言：用户未手动选过 tab 时重算默认 tab，并重建当前流 */
+    if (!this.userSelectedTab) {
+      this.activeTab = resolveDefaultTab();
+    }
+    this.feedRevision += 1;
+  },
+  onHide() {
+    stopAudio();
+  },
+  onUnload() {
+    stopAudio();
   },
   methods: {
-    listCans,
-    toSearch() {
-      uni.navigateTo({ url: '/pages/search' });
-    },
-    toCreate() {
-      uni.navigateTo({ url: '/pages/cans/create' });
-    },
-    toCans() {
-      uni.navigateTo({ url: '/pages/cans/index' });
-    },
-    toCan(id) {
-      uni.navigateTo({ url: `/pages/cans/details?id=${id}` });
-    },
-    toUser(id) {
-      toUserPage(id);
+    switchTab(tab) {
+      if (tab === this.activeTab) return;
+      stopAudio();
+      this.userSelectedTab = true;
+      this.activeTab = tab;
     },
     prepareShare(can) {
       this.pendingShareCan = can;
-    },
-    toFlavors() {
-      uni.navigateTo({ url: '/pages/flavors/index' });
-    },
-    toShelves() {
-      uni.navigateTo({ url: '/pages/shelves/index' });
-    },
-    toMine() {
-      uni.navigateTo({ url: '/pages/users/me' });
-    },
-    toDiscovery() {
-      uni.navigateTo({ url: '/pages/discovery/index' });
-    },
-    toCircles() {
-      uni.navigateTo({ url: '/pages/circles/index' });
     },
   },
 };
 </script>
 
 <style scoped>
-.hero {
-  margin-bottom: 30rpx;
-}
-
-.hero.compact {
-  margin-bottom: 20rpx;
-}
-
-.hero.compact .brand {
-  font-size: 42rpx;
-}
-
-:deep(.social-home-content) {
-  display: flex;
-  height: calc(100vh - 96rpx);
-  min-height: 0;
-  flex-direction: column;
-}
-
-.eyebrow {
-  margin-bottom: 12rpx;
-  color: #7b4f2f;
-  font-size: 22rpx;
-  font-weight: 700;
-  letter-spacing: 5rpx;
-}
-
-.brand {
-  font-size: 54rpx;
-  line-height: 1.1;
-  font-weight: 900;
-  letter-spacing: 0;
-}
-
-.subtitle {
-  margin-top: 12rpx;
-  color: #5d6b61;
-  font-size: 27rpx;
-}
-
-.identity-note {
-  display: inline-block;
-  margin-top: 16rpx;
-  padding: 8rpx 16rpx;
-  border-radius: 999rpx;
-  background: #e8f1eb;
-  color: #1f5c43;
-  font-size: 24rpx;
-  font-weight: 700;
-}
-
-.guest-note {
-  margin-bottom: 24rpx;
-  padding: 22rpx 24rpx;
-  border: 1px solid #d8e4d5;
-  border-left: 8rpx solid #1f5c43;
-  border-radius: 12rpx;
-  background: #f1f7ef;
-  display: flex;
-  flex-direction: column;
-  gap: 8rpx;
-}
-
-.guest-note-title {
-  color: #1f5c43;
-  font-size: 28rpx;
-  font-weight: 800;
-}
-
-.guest-note-copy {
-  color: #526258;
-  font-size: 25rpx;
-  line-height: 1.55;
-}
-
-.search-box {
-  min-height: 82rpx;
-  border-radius: 16rpx;
-  background: #ffffff;
-  border: 1px solid #dfe5da;
-  display: flex;
-  align-items: center;
-  padding: 0 24rpx;
-  gap: 14rpx;
+.home-page {
+  position: relative;
+  height: 100vh;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* 固定深色渐变，不随明暗主题翻转 */
+  background: linear-gradient(
+    165deg,
+    var(--immersive-bg-strong-color) 0%,
+    var(--immersive-bg-soft-color) 38%,
+    var(--immersive-bg-color) 100%
+  );
+  color: var(--on-immersive-color);
+  padding-top: env(safe-area-inset-top);
 }
 
-.search-icon {
-  font-size: 34rpx;
-  color: #1f5c43;
+/* 氛围光斑 */
+.home-page__glow {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
 }
 
-.search-placeholder {
+.home-page__glow--top {
+  top: -220rpx;
+  right: -180rpx;
+  width: 640rpx;
+  height: 640rpx;
+  background: radial-gradient(circle, var(--immersive-glow-color) 0%, transparent 70%);
+}
+
+.home-page__glow--bottom {
+  bottom: -260rpx;
+  left: -200rpx;
+  width: 720rpx;
+  height: 720rpx;
+  background: radial-gradient(circle, var(--immersive-glow-color) 0%, transparent 72%);
+  opacity: 0.7;
+}
+
+/* 细颗粒肌理 */
+.home-page__grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.16;
+  background-image: radial-gradient(var(--immersive-border-color) 1rpx, transparent 1rpx);
+  background-size: 46rpx 46rpx;
+}
+
+.home-page__top {
+  position: relative;
+  z-index: 10;
+}
+
+.home-page__body {
+  position: relative;
+  z-index: 5;
   flex: 1;
-  min-width: 0;
-  color: #7a867d;
-  font-size: 28rpx;
-  overflow-wrap: anywhere;
-}
-
-.search-action {
-  flex: 0 0 auto;
-  color: #1f5c43;
-  font-size: 25rpx;
-  font-weight: 800;
-}
-
-.quick-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18rpx;
-  margin: 28rpx 0;
-}
-
-.quick-grid.compact {
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12rpx;
-  margin: 18rpx 0;
-}
-
-.quick-grid.compact .quick-card {
-  min-height: 104rpx;
-  padding: 16rpx 12rpx;
-}
-
-.quick-grid.compact .quick-title {
-  font-size: 28rpx;
-}
-
-.quick-grid.compact .quick-copy {
-  display: none;
-}
-
-.quick-card {
-  min-height: 168rpx;
-  border-radius: 16rpx;
-  padding: 24rpx;
-  box-sizing: border-box;
-  color: #ffffff;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-}
-
-.shelf {
-  background: #264d59;
-}
-
-.can {
-  background: #1f5c43;
-}
-
-.atlas {
-  background: #7b4f2f;
-}
-
-.mine {
-  background: #555d49;
-}
-
-.discovery {
-  background: #7f632e;
-}
-
-.circle {
-  background: #426475;
-}
-
-.quick-title {
-  font-size: 34rpx;
-  font-weight: 800;
-}
-
-.quick-copy {
-  font-size: 25rpx;
-  opacity: 0.9;
+  padding-bottom: calc(118rpx + env(safe-area-inset-bottom));
 }
 </style>

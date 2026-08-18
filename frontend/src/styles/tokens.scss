@@ -15,6 +15,8 @@
  * - 派生色：--text-secondary-color（正文与次要文字之间）/--surface-subtle-color（弱底色，
  *   如按钮/禁用态背景）/--accent-subtle-color（强调色浅底，如徽章）
  *   /--danger-subtle-color（危险色浅底）/--on-danger-color（危险色实心背景上的文字）
+ * - 沉浸式场景（--immersive-* / --on-immersive-*）：首页沉浸罐头流专用，固定深色、
+ *   不随明暗主题翻转；仅在 .immersive-shell 子树内消费，见文末 immersive 区块。
  * - 字号：--font-size-xs..xl；间距：--space-1..5；圆角：--radius-sm/md/lg/pill
  */
 
@@ -133,3 +135,40 @@ page {
   @include tdesign-brand-overrides;
 }
 /* #endif */
+
+/*
+ * 沉浸式场景 Token（首页罐头流 Issue #192）
+ *
+ * 以品牌深绿为中心的固定深色渐变系，永远保持深色，不随明暗主题翻转；
+ * 只由 .immersive-shell（pages/index.vue 根节点）子树消费，新代码一律
+ * 使用 --immersive-* / --on-immersive-* 系列，不得在组件内新增 hex 字面量。
+ */
+@mixin immersive-color-tokens {
+  /* 深绿渐变底（三档：深底 / 中调 / 品牌深绿） */
+  --immersive-bg-color: #0a1410;
+  --immersive-bg-soft-color: #13261d;
+  --immersive-bg-strong-color: #1f5c43;
+  /* 氛围光与遮罩 */
+  --immersive-glow-color: rgba(105, 181, 139, 0.28);
+  --immersive-veil-color: rgba(6, 13, 10, 0.44);
+  /* 深底文字三档 */
+  --on-immersive-color: #eef6f0;
+  --on-immersive-muted-color: rgba(226, 238, 230, 0.64);
+  --on-immersive-faint-color: rgba(226, 238, 230, 0.36);
+  /* 互动栏图标与玻璃表面 */
+  --immersive-icon-color: #f1f7f2;
+  --immersive-surface-color: rgba(238, 246, 240, 0.09);
+  --immersive-surface-strong-color: rgba(238, 246, 240, 0.18);
+  --immersive-border-color: rgba(238, 246, 240, 0.16);
+  /* 深底强调色与波形 */
+  --immersive-accent-color: #8fd6ac;
+  --immersive-wave-color: rgba(238, 246, 240, 0.3);
+  --immersive-wave-active-color: #9fe0bd;
+  /* 骨架屏 */
+  --immersive-skeleton-color: rgba(238, 246, 240, 0.08);
+  --immersive-skeleton-highlight-color: rgba(238, 246, 240, 0.18);
+}
+
+.immersive-shell {
+  @include immersive-color-tokens;
+}
