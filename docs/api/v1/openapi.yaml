@@ -1848,11 +1848,28 @@ components:
         is_complete:
           type: boolean
           description: 是否已具备成为主铭牌所需的 Package、Flavor 与 Dialect 主张。
+    NameplatePreview:
+      type: object
+      required: [id, display_text, weight, support_count, supported_by_current_user]
+      properties:
+        id: { type: integer }
+        display_text:
+          type: string
+          description: 由原样写法或所关联规范实体生成的展示文本。
+        definition: { type: [string, "null"] }
+        weight: { type: integer }
+        support_count:
+          type: integer
+          minimum: 0
+          description: 该铭牌当前获得的背书总数。
+        supported_by_current_user:
+          type: boolean
+          description: 当前用户是否已背书该铭牌；游客恒为 false。
     CanCard:
       allOf:
         - $ref: "#/components/schemas/CanRef"
         - type: object
-          required: [submitted_dialect, status, visibility, views, nameplate_count, created_at]
+          required: [submitted_dialect, status, visibility, views, nameplate_count, nameplate_total, nameplate_previews, created_at]
           properties:
             submitted_dialect: { oneOf: [{ $ref: "#/components/schemas/DialectRef" }, { type: "null" }] }
             primary_nameplate: { oneOf: [{ $ref: "#/components/schemas/NameplateRef" }, { type: "null" }] }
@@ -1860,6 +1877,15 @@ components:
             visibility: { type: boolean }
             views: { type: integer, minimum: 0 }
             nameplate_count: { type: integer, minimum: 0 }
+            nameplate_total:
+              type: integer
+              minimum: 0
+              description: 该罐 active 铭牌总数。
+            nameplate_previews:
+              type: array
+              maxItems: 3
+              items: { $ref: "#/components/schemas/NameplatePreview" }
+              description: 该罐 active 铭牌按 weight 降序排列的前 3 条预览。
             duration_ms: { type: integer, minimum: 0 }
             created_at: { type: string, format: date-time }
     CanDetail:
