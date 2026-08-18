@@ -1876,6 +1876,9 @@ components:
             status: { $ref: "#/components/schemas/CanStatus" }
             visibility: { type: boolean }
             views: { type: integer, minimum: 0 }
+            recorder_followed_by_me:
+              type: boolean
+              description: 当前用户是否已关注该罐的录制者；游客恒为 false。
             nameplate_count: { type: integer, minimum: 0 }
             nameplate_total:
               type: integer

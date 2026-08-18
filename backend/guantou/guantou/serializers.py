@@ -1,6 +1,7 @@
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef
 from rest_framework import serializers
+from user.models import UserFollow
 from utils.exceptions.payload import field_error
 from utils.exceptions.types.conflict import ConflictException
 
@@ -751,6 +752,7 @@ class CanCardSerializer(serializers.ModelSerializer):
     comment_count = serializers.SerializerMethodField()
     use_count = serializers.SerializerMethodField()
     liked_by_me = serializers.SerializerMethodField()
+    recorder_followed_by_me = serializers.SerializerMethodField()
 
     class Meta:
         model = Can
@@ -771,6 +773,7 @@ class CanCardSerializer(serializers.ModelSerializer):
             "comment_count",
             "use_count",
             "liked_by_me",
+            "recorder_followed_by_me",
             "duration_ms",
             "created_at",
         ]
@@ -843,6 +846,18 @@ class CanCardSerializer(serializers.ModelSerializer):
             and user.is_authenticated
             and CanLike.objects.filter(can=obj, user=user).exists()
         )
+
+    def get_recorder_followed_by_me(self, obj):
+        annotated = getattr(obj, "recorder_followed_by_me", None)
+        if annotated is not None:
+            return bool(annotated)
+        request = self.context.get("request")
+        user = request.user if request else None
+        if not (user and user.is_authenticated) or not obj.recorder_id:
+            return False
+        return UserFollow.objects.filter(
+            follower=user, followed_id=obj.recorder_id
+        ).exists()
 
 
 class CanCommentSerializer(serializers.ModelSerializer):

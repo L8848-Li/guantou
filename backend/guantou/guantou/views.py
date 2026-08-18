@@ -22,6 +22,7 @@ from utils.exceptions.types.bad_request import BadRequestException
 from utils.exceptions.types.conflict import ConflictException
 from inbox.models import Notification
 from inbox.services import send_event_notification
+from user.models import UserFollow
 
 from .models import (
     Can,
@@ -66,6 +67,7 @@ from .services import (
     suggest_search,
     transition_can,
     visible_cans_for_user,
+    with_can_card_annotations,
 )
 
 
@@ -149,20 +151,10 @@ class DiscoveryView(APIView):
 
     def get(self, request):
         context = {"request": request}
-        hot_cans = (
-            visible_cans_for_user(request.user)
-            .filter(visibility=True)
-            .annotate(
-                like_count=Count("likes", distinct=True),
-                comment_count=Count("comments", distinct=True),
-                nameplate_count=Count(
-                    "nameplates",
-                    filter=Q(nameplates__status=Nameplate.Status.ACTIVE),
-                    distinct=True,
-                ),
-            )
-            .order_by("-views", "-like_count", "-created_at", "-id")[:6]
-        )
+        hot_cans = with_can_card_annotations(
+            visible_cans_for_user(request.user).filter(visibility=True),
+            request.user,
+        ).order_by("-views", "-like_count", "-created_at", "-id")[:6]
         hot_flavors = Flavor.objects.annotate(
             popularity=Count(
                 "nameplates__can",
@@ -347,23 +339,13 @@ class DialectCircleViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=["get"], permission_classes=[permissions.AllowAny])
     def cans(self, request, pk=None):
         circle = self.get_object()
-        queryset = (
-            visible_cans_for_user(request.user)
-            .filter(
+        queryset = with_can_card_annotations(
+            visible_cans_for_user(request.user).filter(
                 visibility=True,
                 submitted_dialect_id__in=circle.dialect.descendant_ids(),
-            )
-            .annotate(
-                nameplate_count=Count(
-                    "nameplates",
-                    filter=Q(nameplates__status=Nameplate.Status.ACTIVE),
-                    distinct=True,
-                ),
-                like_count=Count("likes", distinct=True),
-                comment_count=Count("comments", distinct=True),
-            )
-            .order_by("-created_at", "-id")
-        )
+            ),
+            request.user,
+        ).order_by("-created_at", "-id")
         page = self.paginate_queryset(queryset)
         serializer = CanCardSerializer(
             page if page is not None else queryset,
@@ -555,11 +537,17 @@ class CanViewSet(viewsets.ModelViewSet):
             queryset = queryset.annotate(
                 liked_by_me=Exists(
                     CanLike.objects.filter(can_id=OuterRef("pk"), user=user)
-                )
+                ),
+                recorder_followed_by_me=Exists(
+                    UserFollow.objects.filter(
+                        follower=user, followed_id=OuterRef("recorder_id")
+                    )
+                ),
             )
         else:
             queryset = queryset.annotate(
-                liked_by_me=Value(False, output_field=BooleanField())
+                liked_by_me=Value(False, output_field=BooleanField()),
+                recorder_followed_by_me=Value(False, output_field=BooleanField()),
             )
 
         feed = self.request.query_params.get("feed", "")
@@ -888,6 +876,7 @@ class CanPostViewSet(viewsets.ModelViewSet):
         "can__nameplates__package",
         "can__nameplates__flavor",
         "can__nameplates__dialect",
+        "can__nameplates__supports",
     )
 
     def get_queryset(self):
@@ -1111,6 +1100,7 @@ class ShelfViewSet(viewsets.ModelViewSet):
         "can_links__can__recorder",
         "can_links__can__submitted_dialect",
         "can_links__can__nameplates",
+        "can_links__can__nameplates__supports",
     )
     serializer_class = ShelfSerializer
     permission_classes = [IsOwnerOrAdmin]

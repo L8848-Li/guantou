@@ -9,7 +9,7 @@ from django.test.utils import CaptureQueriesContext
 from rest_framework.exceptions import APIException
 from rest_framework.test import APIClient
 
-from user.models import UserInfo
+from user.models import UserFollow, UserInfo
 
 from utils.exceptions.handler import drf_exception_handler
 from utils.exceptions.middleware import ExceptionMiddleware
@@ -17,6 +17,7 @@ from utils.exceptions.types.common import CommonException
 
 from .models import (
     Can,
+    CanPost,
     Dialect,
     DialectCircle,
     Flavor,
@@ -1110,6 +1111,105 @@ class CanNameplatePreviewTests(DomainFixture):
         grown = query_count()
         # 铭牌与支持数量翻倍，预览不产生逐铭牌/逐罐额外查询。
         self.assertEqual(base, grown)
+
+
+class CanCardFollowStateTests(DomainFixture):
+    def test_recorder_followed_by_me_reflects_follow_state(self):
+        followed_can = self.make_can(recorder=self.other)
+        own_can = self.make_can()
+        UserFollow.objects.create(follower=self.user, followed=self.other)
+
+        response = self.client.get("/cans/")
+        self.assertEqual(response.status_code, 200)
+        by_id = {item["id"]: item for item in response.data["results"]}
+        self.assertTrue(by_id[followed_can.id]["recorder_followed_by_me"])
+        self.assertFalse(by_id[own_can.id]["recorder_followed_by_me"])
+
+    def test_recorder_followed_by_me_is_false_for_guest(self):
+        can = self.make_can(recorder=self.other)
+        UserFollow.objects.create(follower=self.user, followed=self.other)
+
+        self.client.force_authenticate(None)
+        item = next(
+            entry
+            for entry in self.client.get("/cans/").data["results"]
+            if entry["id"] == can.id
+        )
+        self.assertFalse(item["recorder_followed_by_me"])
+
+        discovery = self.client.get("/discovery/")
+        hot_by_id = {entry["id"]: entry for entry in discovery.data["hot_cans"]}
+        self.assertFalse(hot_by_id[can.id]["recorder_followed_by_me"])
+
+
+class CanCardQueryBudgetTests(DomainFixture):
+    """守护各消费 CanCardSerializer 的列表路径，证明无逐罐/逐铭牌查询增长。"""
+
+    def seed(self):
+        cans = [
+            self.make_can(),
+            self.make_can(audio_url="https://example.test/other.mp3"),
+        ]
+        for index, can in enumerate(cans):
+            plate = self.make_nameplate(can=can, text_content=f"种子{index}", weight=1)
+            NameplateSupport.objects.create(nameplate=plate, user=self.other)
+        return cans
+
+    def grow(self, cans):
+        # 罐头数不变，仅追加铭牌与支持，验证预取稳定。
+        for can in cans:
+            for text, weight in (("增生", 6), ("增长", 5)):
+                plate = self.make_nameplate(can=can, text_content=text, weight=weight)
+                NameplateSupport.objects.create(nameplate=plate, user=self.other)
+                NameplateSupport.objects.create(nameplate=plate, user=self.staff)
+
+    def assert_query_count_stable(self, default_path, prepare=None):
+        cans = self.seed()
+        path = prepare(cans) if prepare else None
+        path = path or default_path
+
+        def query_count():
+            with CaptureQueriesContext(connection) as context:
+                response = self.client.get(path)
+            self.assertEqual(response.status_code, 200)
+            return len(context.captured_queries)
+
+        # 预热一次，吸收首次创建型旁路写入（如搜索热词统计）。
+        self.assertEqual(self.client.get(path).status_code, 200)
+        base = query_count()
+        self.grow(cans)
+        self.assertEqual(base, query_count())
+
+    def test_search_cans_queries_are_stable(self):
+        self.assert_query_count_stable("/search/?q=走路")
+
+    def test_discovery_hot_cans_queries_are_stable(self):
+        self.assert_query_count_stable("/discovery/")
+
+    def test_circle_cans_queries_are_stable(self):
+        def prepare(cans):
+            circle = DialectCircle.objects.create(dialect=self.dialect, name="游洋圈")
+            return f"/circles/{circle.id}/cans/"
+
+        self.assert_query_count_stable(None, prepare)
+
+    def test_posts_can_preview_queries_are_stable(self):
+        def prepare(cans):
+            for can in cans:
+                CanPost.objects.create(can=can, author=self.other, text="乡音")
+            return "/posts/"
+
+        self.assert_query_count_stable(None, prepare)
+
+    def test_shelf_cans_queries_are_stable(self):
+        def prepare(cans):
+            shelf = Shelf.objects.create(
+                title="查询守护", slug="query-guard", creator=self.user
+            )
+            shelf.cans.set(cans)
+            return f"/shelves/{shelf.id}/"
+
+        self.assert_query_count_stable(None, prepare)
 
 
 class CanQueryAndStateTests(DomainFixture):

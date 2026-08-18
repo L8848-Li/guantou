@@ -1,15 +1,29 @@
 import logging
 
 from django.db import transaction
-from django.db.models import Case, F, IntegerField, Q, Value, When
+from django.db.models import (
+    BooleanField,
+    Case,
+    Count,
+    Exists,
+    F,
+    IntegerField,
+    OuterRef,
+    Q,
+    Value,
+    When,
+)
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
+from user.models import UserFollow
 from utils.exceptions.payload import field_error
 from utils.exceptions.types.conflict import ConflictException
 
 from .models import (
     Can,
+    CanLike,
+    CanPost,
     Flavor,
     FlavorPackage,
     Nameplate,
@@ -42,7 +56,7 @@ def result_limit(value, default=DEFAULT_SEARCH_LIMIT, maximum=MAX_SEARCH_LIMIT):
 def visible_cans_for_user(user):
     queryset = Can.objects.select_related(
         "recorder", "submitted_dialect", "verifier"
-    ).prefetch_related("nameplates")
+    ).prefetch_related("nameplates", "nameplates__supports")
     if user and user.is_authenticated and user.is_staff:
         return queryset
     if user and user.is_authenticated:
@@ -72,14 +86,50 @@ def search_packages(keyword, limit):
 
 
 def search_cans(keyword, user, limit):
-    return (
-        visible_cans_for_user(user)
-        .filter(
+    return with_can_card_annotations(
+        visible_cans_for_user(user).filter(
             Q(concept_text__icontains=keyword)
             | Q(nameplates__text_content__icontains=keyword)
             | Q(nameplates__definition__icontains=keyword)
+        ),
+        user,
+    ).distinct()[:limit]
+
+
+def with_can_card_annotations(queryset, user):
+    """为消费 CanCardSerializer 的列表路径批量注解计数与“我”视角布尔，
+
+    避免逐罐 fallback 查询；配合 visible_cans_for_user 的 nameplates/supports
+    预取，保证列表序列化不产生逐罐/逐铭牌额外查询。
+    """
+    queryset = queryset.annotate(
+        nameplate_count=Count(
+            "nameplates",
+            filter=Q(nameplates__status=Nameplate.Status.ACTIVE),
+            distinct=True,
+        ),
+        like_count=Count("likes", distinct=True),
+        comment_count=Count("comments", distinct=True),
+        use_count=Count(
+            "posts",
+            filter=Q(posts__visibility=CanPost.Visibility.PUBLIC),
+            distinct=True,
+        ),
+    )
+    if user and user.is_authenticated:
+        return queryset.annotate(
+            liked_by_me=Exists(
+                CanLike.objects.filter(can_id=OuterRef("pk"), user=user)
+            ),
+            recorder_followed_by_me=Exists(
+                UserFollow.objects.filter(
+                    follower=user, followed_id=OuterRef("recorder_id")
+                )
+            ),
         )
-        .distinct()[:limit]
+    return queryset.annotate(
+        liked_by_me=Value(False, output_field=BooleanField()),
+        recorder_followed_by_me=Value(False, output_field=BooleanField()),
     )
 
 
