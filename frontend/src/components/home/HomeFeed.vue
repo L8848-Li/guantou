@@ -326,13 +326,17 @@ export default {
 
 .home-feed__card {
   height: 100%;
-  padding-right: 150rpx;
+  /* 右侧为互动栏预留：rail 实占（头像 88rpx + 边框）约 94rpx + right 24rpx + 呼吸间隙 */
+  padding-right: 140rpx;
 }
 
+/* 互动栏在整屏 slide 内竖直居中；slide 底边已由 .home-page__body 的
+ * padding-bottom 避开 TabBar，故无需额外下探补偿 */
 .home-feed__rail {
   position: absolute;
-  right: 20rpx;
-  bottom: 180rpx;
+  right: 24rpx;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 /* ---------- 引导 / 空态 / 失败 ---------- */

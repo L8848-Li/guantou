@@ -31,16 +31,34 @@ test('guest browses immersive feed, plays audio, and opens search', async ({ pag
     audio_url: tinyWavDataUri(),
     concept_text: '舒服',
     duration_ms: 3200,
-    nameplate_count: 1,
-    nameplate_total: 1,
-    nameplate_previews: [{
-      id: 21,
-      display_text: '巴适',
-      definition: '安逸、舒服',
-      weight: 5,
-      support_count: 12,
-      supported_by_current_user: false,
-    }],
+    nameplate_count: 3,
+    nameplate_total: 3,
+    nameplate_previews: [
+      {
+        id: 21,
+        display_text: '巴适',
+        definition: '安逸、舒服',
+        weight: 5,
+        support_count: 12,
+        supported_by_current_user: false,
+      },
+      {
+        id: 22,
+        display_text: '巴适得板',
+        definition: '非常舒服',
+        weight: 3,
+        support_count: 8,
+        supported_by_current_user: false,
+      },
+      {
+        id: 23,
+        display_text: '安逸得很',
+        definition: '舒适惬意',
+        weight: 2,
+        support_count: 5,
+        supported_by_current_user: false,
+      },
+    ],
     primary_nameplate: { display_text: '巴适' },
     recorder: { id: 3, username: 'guest_author', nickname: '乡友老张', avatar: '' },
     submitted_dialect: { qualified_code: '西南官话.四川' },
@@ -128,7 +146,31 @@ test('guest browses immersive feed, plays audio, and opens search', async ({ pag
   await expect(page.getByRole('tab', { name: '推荐', selected: true })).toBeVisible();
   await expect(page.getByText('巴适', { exact: true })).toBeVisible();
   await expect(page.getByText('安逸、舒服', { exact: true })).toBeVisible();
+  /* 副铭牌以紧凑形态与主铭牌同屏展示 */
+  await expect(page.getByText('巴适得板', { exact: true })).toBeVisible();
+  await expect(page.getByText('安逸得很', { exact: true })).toBeVisible();
   await expect(page.getByText('支持 12')).toBeVisible();
+  /* Issue #218：副铭牌紧凑形态保留操作条，三张铭牌均有 支持/评论/立论 */
+  await expect(page.getByText('支持 8')).toBeVisible();
+  await expect(page.getByText('支持 5')).toBeVisible();
+  const debateButtons = page.locator('.plate-card__action--debate');
+  await expect(debateButtons).toHaveCount(3);
+  for (let i = 0; i < 3; i += 1) {
+    await expect(debateButtons.nth(i)).toBeVisible();
+  }
+  /* 副铭牌仍为紧凑形态：来源行收进详情页，不参与首屏展示 */
+  await expect(page.locator('.plate-card__source').nth(1)).toBeHidden();
+  await expect(page.locator('.plate-card__source').nth(2)).toBeHidden();
+  /* 布局验收：第三张（最后一张副）铭牌的操作条完整落在 TabBar 之上 */
+  const lastPlateActions = await page
+    .locator('.plate-card')
+    .nth(2)
+    .locator('.plate-card__actions')
+    .boundingBox();
+  const tabBar = await page.locator('.home-tab-bar').boundingBox();
+  expect(lastPlateActions).not.toBeNull();
+  expect(tabBar).not.toBeNull();
+  expect(lastPlateActions.y + lastPlateActions.height).toBeLessThanOrEqual(tabBar.y);
   if (process.env.E2E_SCREENSHOT_DIR) {
     await page.screenshot({
       path: `${process.env.E2E_SCREENSHOT_DIR}/guest-home.png`,

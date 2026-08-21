@@ -147,6 +147,28 @@ describe('NameplateVoteRow optimistic voting', () => {
     expect(wrapper.vm.supportCount).toBe(3);
   });
 
+  it('renders the full action bar in compact form and keeps voting wired', async () => {
+    requireAuth.mockReturnValue(true);
+    supportNameplate.mockResolvedValue({});
+    const wrapper = mountRow({}, { compact: true, canId: 33 });
+
+    /* Issue #218：副铭牌紧凑形态保留操作条，三按钮与主铭牌同构可用 */
+    expect(wrapper.find('.plate-card__actions').exists()).toBe(true);
+    expect(wrapper.find('.vote-row__support').text()).toContain('支持 3');
+    expect(wrapper.find('.plate-card__comment').text()).toContain('评论 0');
+    expect(wrapper.find('.plate-card__action--debate').text()).toBe('立论');
+
+    await wrapper.find('.vote-row__support').trigger('tap');
+    await wrapper.vm.$nextTick();
+
+    expect(requireAuth).toHaveBeenCalledWith('nameplate_support', {
+      nameplateId: 7,
+      canId: 33,
+    });
+    expect(supportNameplate).toHaveBeenCalledWith(7);
+    expect(wrapper.vm.supportCount).toBe(4);
+  });
+
   it('routes the body, comments and debate as separate nameplate actions', async () => {
     requireAuth.mockReturnValue(true);
     const wrapper = mountRow({}, { canId: 33 });

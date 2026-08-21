@@ -24,24 +24,28 @@
       <HomeFeed
         v-if="activeTab === 'today'"
         :key="`today-${feedRevision}`"
+        class="home-page__feed"
         tab="today"
         @share="prepareShare"
       />
       <HomeFeed
         v-else-if="activeTab === 'dialect'"
         :key="`dialect-${feedRevision}`"
+        class="home-page__feed"
         tab="dialect"
         @share="prepareShare"
       />
       <HomeFeed
         v-else-if="activeTab === 'following'"
         :key="`following-${feedRevision}`"
+        class="home-page__feed"
         tab="following"
         @share="prepareShare"
       />
       <HomeFeed
         v-else
         :key="`recommended-${feedRevision}`"
+        class="home-page__feed"
         tab="recommended"
         @share="prepareShare"
       />
@@ -55,6 +59,7 @@
 import HomeFeed from '@/components/home/HomeFeed.vue';
 import HomeTabBar from '@/components/home/HomeTabBar.vue';
 import HomeTopBar from '@/components/home/HomeTopBar.vue';
+import { isLoggedIn } from '@/services/authGuard';
 import { resolveDefaultTab } from '@/services/homeFeed';
 import { ROUTES } from '@/services/navigation';
 import { SHARE_TITLE } from '@/const/branding';
@@ -75,6 +80,10 @@ export default {
       feedRevision: 0,
     };
   },
+  created() {
+    /* 记录首次可见时的登录态指纹（非响应式），供 onShow 比对 */
+    this.lastFeedFingerprint = this.feedFingerprint();
+  },
   onShareAppMessage() {
     if (this.pendingShareCan) return canSharePayload(this.pendingShareCan);
     return {
@@ -83,11 +92,19 @@ export default {
     };
   },
   onShow() {
-    /* 刷新登录态与主方言：用户未手动选过 tab 时重算默认 tab，并重建当前流 */
+    /*
+     * 刷新触发条件（且仅限以下两种，普通从详情页等浏览返回不重建
+     * feed，保留滚动位置与已加载数据）：
+     * 1. 登录态变化：登录成功 / 登出 / token 过期被清除；
+     * 2. 主方言变化：onboarding 换主方言后返回。
+     */
     if (!this.userSelectedTab) {
       this.activeTab = resolveDefaultTab();
     }
-    this.feedRevision += 1;
+    if (this.feedFingerprint() !== this.lastFeedFingerprint) {
+      this.lastFeedFingerprint = this.feedFingerprint();
+      this.feedRevision += 1;
+    }
   },
   onHide() {
     stopAudio();
@@ -96,6 +113,19 @@ export default {
     stopAudio();
   },
   methods: {
+    /*
+     * feed 重建指纹：登录态（token 有无）+ 主方言。
+     * 依赖的 storage / globalData 均非响应式，故用方法而非 computed，
+     * 每次调用实时取值；feed 数据中的 liked_by_me /
+     * recorder_followed_by_me / supported_by_current_user 等字段
+     * 依赖登录态，主方言决定默认 tab 与同方言流内容。
+     */
+    feedFingerprint() {
+      const app = typeof getApp === 'function' ? getApp() : null;
+      const info = app && app.globalData ? app.globalData.userInfo : null;
+      const dialect = info ? info.primary_dialect : null;
+      return `${isLoggedIn() ? 'auth' : 'guest'}:${dialect ? JSON.stringify(dialect) : ''}`;
+    },
     switchTab(tab) {
       if (tab === this.activeTab) return;
       stopAudio();
@@ -175,5 +205,26 @@ export default {
   display: flex;
   flex-direction: column;
   padding-bottom: calc(118rpx + env(safe-area-inset-bottom));
+}
+
+/* tab 切换时 feed 进入侧淡入（v-if 卸载侧不做退场，避免引入 <transition>） */
+.home-page__feed {
+  animation: home-feed-enter 0.2s ease-out;
+}
+
+@keyframes home-feed-enter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-page__feed {
+    animation: none;
+  }
 }
 </style>

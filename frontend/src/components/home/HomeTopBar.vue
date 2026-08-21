@@ -41,6 +41,12 @@
         >
           {{ tab.label }}
         </view>
+        <!-- 单一滑动指示器：均分槽位下按激活索引滑动 -->
+        <view
+          class="home-top-bar__indicator"
+          aria-hidden="true"
+          :style="indicatorStyle"
+        />
       </view>
 
       <!-- 右侧搜索 -->
@@ -83,6 +89,17 @@ export default {
       HOME_FEED_TABS,
       appName: APP_NAME,
     };
+  },
+  computed: {
+    activeTabIndex() {
+      const index = HOME_FEED_TABS.findIndex((tab) => tab.key === this.activeTab);
+      return index < 0 ? 0 : index;
+    },
+    /* 指示器槽位宽为容器的 25%，translateX 百分比相对自身宽度，
+     * 故 index * 100% 恰好落在第 index 个槽位 */
+    indicatorStyle() {
+      return { transform: `translateX(${this.activeTabIndex * 100}%)` };
+    },
   },
   methods: {
     switchTab(key) {
@@ -146,20 +163,22 @@ export default {
 .home-top-bar__tabs {
   flex: 1;
   min-width: 0;
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 30rpx;
 }
 
 .home-top-bar__tab {
-  position: relative;
+  flex: 1;
+  min-width: 0;
+  text-align: center;
   padding: 12rpx 4rpx;
   color: var(--on-immersive-muted-color);
   font-size: var(--font-size-base);
   font-weight: 500;
   letter-spacing: 2rpx;
-  transition: color 0.25s ease;
+  /* 字号平滑过渡；字重插值在多数字体上不可靠，保持瞬切保双端一致 */
+  transition: color 0.25s ease, font-size 0.25s ease;
 }
 
 .home-top-bar__tab--active {
@@ -168,17 +187,33 @@ export default {
   font-weight: 900;
 }
 
-.home-top-bar__tab--active::after {
-  content: '';
+/* 单一滑动下划线指示器：宽度为一个均分槽位（25%），
+ * 实际短线由 ::after 渲染并槽内居中，视觉与原下划线一致 */
+.home-top-bar__indicator {
   position: absolute;
-  left: 50%;
+  left: 0;
   bottom: 0;
-  transform: translateX(-50%);
+  width: 25%;
+  height: 6rpx;
+  transition: transform 0.25s ease;
+}
+
+.home-top-bar__indicator::after {
+  content: '';
+  display: block;
   width: 36rpx;
   height: 6rpx;
+  margin: 0 auto;
   border-radius: 999rpx;
   background: var(--immersive-accent-color);
   box-shadow: 0 0 12rpx var(--immersive-glow-color);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-top-bar__tab,
+  .home-top-bar__indicator {
+    transition: none;
+  }
 }
 
 /* ---------- 搜索 ---------- */

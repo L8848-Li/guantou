@@ -1,7 +1,10 @@
 <template>
   <view
     class="plate-card"
-    :class="{ 'plate-card--supported': supported }"
+    :class="{
+      'plate-card--supported': supported,
+      'plate-card--compact': compact,
+    }"
   >
     <view
       class="plate-card__body"
@@ -89,6 +92,12 @@ export default {
     canId: {
       type: [Number, String],
       default: null,
+    },
+    /* 紧凑形态：首页副铭牌预览用，缩小字号内边距、释义限 1 行、隐藏来源行；
+     * 操作条保留（按钮小一号），支持/评论/立论与主铭牌一致可用 */
+    compact: {
+      type: Boolean,
+      default: false,
     },
   },
   emits: ['support', 'unsupport'],
@@ -254,5 +263,40 @@ export default {
 .plate-card__action--debate {
   background: var(--immersive-accent-color);
   color: var(--immersive-bg-color);
+}
+
+/* ---------- 紧凑形态（首页副铭牌） ----------
+ * 通过 prop 而非 :deep() 实现：小程序端组件样式隔离，scoped 穿透不可靠；
+ * 由组件自身渲染紧凑 class，双端行为一致，且默认 false 不影响既有调用方。 */
+.plate-card--compact .plate-card__body {
+  padding: 14rpx 20rpx 12rpx;
+}
+
+.plate-card--compact .plate-card__writing {
+  margin-top: 6rpx;
+  font-size: var(--font-size-lg);
+  letter-spacing: 2rpx;
+}
+
+.plate-card--compact .plate-card__reading {
+  margin-top: 4rpx;
+  font-size: var(--font-size-xs);
+}
+
+.plate-card--compact .plate-card__definition {
+  margin-top: 6rpx;
+  font-size: var(--font-size-xs);
+  -webkit-line-clamp: 1;
+}
+
+/* 紧凑形态下省略来源行，点按进详情页再看依据 */
+.plate-card--compact .plate-card__source {
+  display: none;
+}
+
+/* 紧凑形态保留操作条：按钮字号/内边距比主铭牌小一档，避免副铭牌堆高挤压播放舞台 */
+.plate-card--compact .plate-card__action {
+  padding: 12rpx 8rpx;
+  font-size: 19rpx;
 }
 </style>

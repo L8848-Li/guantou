@@ -203,6 +203,26 @@ export default {
   flex-direction: column;
   align-items: center;
   gap: 34rpx;
+  /* v-if 挂载即播放：淡入 + 轻微右滑入，缓解互动栏瞬现感 */
+  animation: action-rail-enter 0.2s ease-out;
+}
+
+@keyframes action-rail-enter {
+  from {
+    opacity: 0;
+    transform: translateX(20rpx);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .action-rail {
+    animation: none;
+  }
 }
 
 /* ---------- 头像与关注 ---------- */

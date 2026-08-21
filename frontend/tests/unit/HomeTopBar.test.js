@@ -77,4 +77,16 @@ describe('HomeTopBar', () => {
     expect(tabs[1].attributes('aria-selected')).toBe('true');
     expect(tabs[0].attributes('aria-selected')).toBe('false');
   });
+
+  it('slides the single indicator to the active tab slot', async () => {
+    const wrapper = mountTopBar('today');
+
+    const indicator = wrapper.find('.home-top-bar__indicator');
+    expect(indicator.exists()).toBe(true);
+    expect(indicator.attributes('style')).toContain('translateX(0%)');
+
+    await wrapper.setProps({ activeTab: 'following' });
+
+    expect(indicator.attributes('style')).toContain('translateX(200%)');
+  });
 });

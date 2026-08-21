@@ -63,7 +63,8 @@ export default {
 .audio-wave {
   display: flex;
   align-items: center;
-  height: 96rpx;
+  /* 首页 3 张铭牌（含副铭牌操作条）布局预算下收紧一档（Issue #218） */
+  height: 84rpx;
   width: 100%;
 }
 

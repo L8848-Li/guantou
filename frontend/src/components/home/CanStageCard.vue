@@ -81,12 +81,14 @@
         </view>
       </view>
 
-      <!-- 铭牌区 -->
+      <!-- 铭牌区：主铭牌 + 最多 2 张副铭牌（紧凑形态） -->
       <view class="stage-card__plates">
         <NameplateVoteRow
-          v-if="primaryPreview"
-          :nameplate="primaryPreview"
+          v-for="(plate, index) in platePreviews"
+          :key="plate.id"
+          :nameplate="plate"
           :can-id="can.id"
+          :compact="index > 0"
         />
         <view
           v-if="!previews.length"
@@ -178,11 +180,15 @@ export default {
       return `${Math.max(1, Math.round(durationMs / 1000))}″`;
     },
     extraCount() {
-      return Math.max(0, this.nameplateTotal - (this.primaryPreview ? 1 : 0));
+      return Math.max(0, this.nameplateTotal - this.platePreviews.length);
     },
-    primaryPreview() {
+    /* 主铭牌排首位，副铭牌随其后，总共最多渲染 3 张 */
+    platePreviews() {
       const previews = this.previews || [];
-      return previews.find((plate) => plate.is_primary) || previews[0] || null;
+      if (!previews.length) return [];
+      const primary = previews.find((plate) => plate.is_primary) || previews[0];
+      const rest = previews.filter((plate) => plate !== primary);
+      return [primary, ...rest].slice(0, 3);
     },
   },
   watch: {
@@ -275,7 +281,40 @@ export default {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  padding: 32rpx 32rpx 48rpx;
+  /* 副铭牌恢复操作条后内容变高：上下内边距收紧一档，底部交给 body 的
+   * padding-bottom（118rpx）避开 TabBar，卡片自身只需少量呼吸留白 */
+  padding: 24rpx 32rpx 28rpx;
+}
+
+/* 三大纵向区块禁止 flex 收缩：一旦内容超出可用高度（超长释义等极端情况），
+ * 溢出从顶部（作者行/舞台上方）被裁切，而非铭牌底部被挤成半张 ——
+ * 这正是「第二张副铭牌显示不全」截断 bug 的成因（flex 默认 shrink=1） */
+.stage-card__head,
+.stage-card__stage,
+.stage-card__plates {
+  flex: 0 0 auto;
+}
+
+/* 激活态：占位圆点 → 完整卡切换时整卡淡入，
+ * 不与子元素 halo 呼吸动画冲突；非激活占位态无动画 */
+.stage-card--active {
+  animation: stage-card-enter 0.2s ease-out;
+}
+
+@keyframes stage-card-enter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-card--active {
+    animation: none;
+  }
 }
 
 /* ---------- 作者行 ---------- */
@@ -331,14 +370,16 @@ export default {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 64rpx 0 24rpx;
+  /* 铭牌区增至 3 张且副铭牌带操作条，舞台上下留白再收紧一档保层次；
+   * 播放按钮仍为视觉主角（140rpx），详见 Issue #218 布局预算 */
+  padding: 28rpx 0 16rpx;
 }
 
 .stage-card__halo {
   position: absolute;
-  top: 34rpx;
-  width: 260rpx;
-  height: 260rpx;
+  top: 16rpx;
+  width: 224rpx;
+  height: 224rpx;
   border-radius: 50%;
   background: radial-gradient(circle, var(--immersive-glow-color) 0%, transparent 70%);
   opacity: 0.55;
@@ -353,8 +394,8 @@ export default {
 .play-button {
   position: relative;
   z-index: 1;
-  width: 156rpx;
-  height: 156rpx;
+  width: 140rpx;
+  height: 140rpx;
   margin: 0;
   padding: 0;
   border-radius: 50%;
@@ -382,10 +423,10 @@ export default {
 .play-button__triangle {
   width: 0;
   height: 0;
-  margin-left: 10rpx;
-  border-left: 44rpx solid var(--on-immersive-color);
-  border-top: 26rpx solid transparent;
-  border-bottom: 26rpx solid transparent;
+  margin-left: 9rpx;
+  border-left: 40rpx solid var(--on-immersive-color);
+  border-top: 24rpx solid transparent;
+  border-bottom: 24rpx solid transparent;
 }
 
 .play-button--playing .play-button__triangle {
@@ -398,19 +439,19 @@ export default {
 }
 
 .play-button__pause-bar {
-  width: 14rpx;
-  height: 52rpx;
+  width: 12rpx;
+  height: 46rpx;
   border-radius: 6rpx;
   background: var(--immersive-bg-color);
 }
 
 .stage-card__wave {
   width: 100%;
-  margin-top: 40rpx;
+  margin-top: 24rpx;
 }
 
 .stage-card__time {
-  margin-top: 14rpx;
+  margin-top: 10rpx;
   display: flex;
   align-items: baseline;
   gap: 10rpx;
@@ -424,54 +465,12 @@ export default {
   font-weight: 700;
 }
 
-/* ---------- 概念文字 ---------- */
-.stage-card__concept {
-  margin-top: 40rpx;
-}
-
-.stage-card__concept-quote {
-  display: block;
-  color: var(--on-immersive-color);
-  font-size: 56rpx;
-  font-weight: 900;
-  line-height: 1.24;
-  letter-spacing: 3rpx;
-  overflow-wrap: anywhere;
-}
-
-.stage-card__concept-hint {
-  display: block;
-  margin-top: 12rpx;
-  color: var(--on-immersive-faint-color);
-  font-size: 20rpx;
-  letter-spacing: 4rpx;
-}
-
 /* ---------- 铭牌区 ---------- */
 .stage-card__plates {
-  margin-top: 32rpx;
+  margin-top: 24rpx;
   display: flex;
   flex-direction: column;
-  gap: 14rpx;
-}
-
-.stage-card__plates-skeleton {
-  display: flex;
-  flex-direction: column;
-  gap: 14rpx;
-}
-
-.stage-card__plates-line {
-  height: 76rpx;
-  border-radius: var(--radius-md);
-  background: linear-gradient(
-    100deg,
-    var(--immersive-skeleton-color) 30%,
-    var(--immersive-skeleton-highlight-color) 50%,
-    var(--immersive-skeleton-color) 70%
-  );
-  background-size: 200% 100%;
-  animation: immersive-shimmer 1.4s linear infinite;
+  gap: 12rpx;
 }
 
 .stage-card__plates-empty {
@@ -483,8 +482,9 @@ export default {
   text-align: center;
 }
 
+/* 全宽收尾入口：与上方铭牌卡同宽，右缘对齐避免锯齿 */
 .stage-card__plates-more {
-  align-self: flex-start;
+  align-self: stretch;
   padding: 10rpx 22rpx;
   border-radius: var(--radius-pill);
   color: var(--immersive-accent-color);
@@ -493,6 +493,7 @@ export default {
   letter-spacing: 1rpx;
   background: var(--immersive-surface-color);
   border: 1rpx solid var(--immersive-border-color);
+  text-align: center;
 }
 
 /* ---------- 非激活占位 ---------- */
@@ -533,15 +534,8 @@ export default {
   }
 }
 
-@keyframes immersive-shimmer {
-  to {
-    background-position: -200% 0;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .stage-card__halo--breathing,
-  .stage-card__plates-line {
+  .stage-card__halo--breathing {
     animation: none;
   }
 }
