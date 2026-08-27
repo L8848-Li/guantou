@@ -6,7 +6,6 @@ import {
   ensureDialectOnboarding,
   ONBOARDING_REASONS,
 } from '@/services/dialectOnboarding';
-import { toIndexPage } from '@/routers/index';
 import { applyTheme } from '@/services/theme';
 import pagesJson from '@/pages.json';
 
@@ -19,10 +18,9 @@ export default {
     if (uni.getSystemInfoSync().uniPlatform === 'web') {
       const pages = pagesJson.pages.map((page) => `/${page.path}`);
       const currentPath = window.location.pathname;
-      // Handle root path '/' by redirecting to the index page (home page)
-      if (currentPath === '/' || currentPath === '') {
-        toIndexPage(true);
-      } else if (!pages.includes(currentPath)) {
+      // history 模式下 '/' 已由路由原生渲染首页（pages.json 第一项），
+      // 不能再 reLaunch：重建已挂载页面会使首页 feed 接口重复发起一次。
+      if (currentPath !== '/' && currentPath !== '' && !pages.includes(currentPath)) {
         goNotFound();
       }
     }
