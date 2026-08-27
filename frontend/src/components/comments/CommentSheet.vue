@@ -65,6 +65,9 @@ import CommentThread from '@/components/CommentThread.vue';
 const CLOSE_THRESHOLD = 80;
 const EXPAND_THRESHOLD = -80;
 const EXIT_DURATION = 320;
+/* 入场延迟：等初始 translateY(100%) 完成一次样式提交后再加开启类，
+ * 否则挂载与开启同帧合并会导致入场过渡被跳过（关闭不受影响） */
+const ENTER_DELAY = 32;
 
 export default {
   name: 'CommentSheet',
@@ -105,6 +108,7 @@ export default {
       dragging: false,
       dragOffset: 0,
       startY: 0,
+      enterTimer: null,
       exitTimer: null,
     };
   },
@@ -126,9 +130,18 @@ export default {
         }
         this.rendered = true;
         this.$nextTick(() => {
-          this.open = true;
+          if (this.enterTimer) clearTimeout(this.enterTimer);
+          this.enterTimer = setTimeout(() => {
+            this.enterTimer = null;
+            /* 32ms 内若已关闭则不再开启，避免残留开启态 */
+            if (this.modelValue) this.open = true;
+          }, ENTER_DELAY);
         });
       } else {
+        if (this.enterTimer) {
+          clearTimeout(this.enterTimer);
+          this.enterTimer = null;
+        }
         this.open = false;
         this.expanded = false;
         this.dragOffset = 0;
@@ -140,6 +153,7 @@ export default {
     },
   },
   beforeUnmount() {
+    if (this.enterTimer) clearTimeout(this.enterTimer);
     if (this.exitTimer) clearTimeout(this.exitTimer);
   },
   methods: {

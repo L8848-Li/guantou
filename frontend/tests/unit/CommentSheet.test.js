@@ -38,9 +38,14 @@ describe('CommentSheet 半屏评论面板（issue #219）', () => {
 
     await wrapper.setProps({ modelValue: true });
     await wrapper.vm.$nextTick();
+
+    /* 面板先以收起态挂载，入场延迟后才加开启类，保证过渡生效 */
+    expect(wrapper.find('.comment-sheet').exists()).toBe(true);
+    expect(wrapper.find('.comment-sheet__panel--open').exists()).toBe(false);
+
+    vi.advanceTimersByTime(50);
     await wrapper.vm.$nextTick();
 
-    expect(wrapper.find('.comment-sheet').exists()).toBe(true);
     expect(wrapper.find('.comment-sheet__panel--open').exists()).toBe(true);
     expect(wrapper.find('.comment-sheet__mask--visible').exists()).toBe(true);
     expect(wrapper.find('.thread-stub').exists()).toBe(true);
