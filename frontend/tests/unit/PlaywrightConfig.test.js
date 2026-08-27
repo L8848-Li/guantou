@@ -31,9 +31,17 @@ describe('Playwright configuration', () => {
     expect(config.workers).toBe(1);
   });
 
+  it('retries flaky runs and keeps traces for forensics in CI', async () => {
+    const config = await loadConfig('true');
+
+    expect(config.retries).toBe(2);
+    expect(config.use.trace).toBe('retain-on-failure');
+  });
+
   it('keeps Playwright worker defaults for local runs', async () => {
     const config = await loadConfig(undefined);
 
     expect(config.workers).toBeUndefined();
+    expect(config.retries).toBe(0);
   });
 });

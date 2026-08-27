@@ -169,6 +169,14 @@ jobs:
         working-directory: frontend
         run: yarn test:e2e:h5
 
+      - name: Upload Playwright test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v8
+        with:
+          name: playwright-test-results-${{ github.run_id }}
+          path: frontend/test-results
+          if-no-files-found: ignore
+
       - name: Show stack and application logs on failure
         if: failure()
         run: |
