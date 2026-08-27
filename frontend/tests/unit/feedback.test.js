@@ -14,6 +14,7 @@ describe('feedback service', () => {
       showLoading: vi.fn(),
       hideLoading: vi.fn(),
       showToast: vi.fn(),
+      hideToast: vi.fn(),
     };
   });
 
@@ -26,6 +27,9 @@ describe('feedback service', () => {
       mask: true,
     });
     expect(uni.hideLoading).toHaveBeenCalled();
+    /* 兜底：toast/loading 共享弹层状态，收尾时一并 hideToast，
+     * 避免 loading 期间穿插 toast 后遮罩残留拦截点击 */
+    expect(uni.hideToast).toHaveBeenCalled();
   });
 
   it('keeps one loading overlay until all concurrent work finishes', () => {
@@ -38,6 +42,7 @@ describe('feedback service', () => {
 
     feedback.hideLoading();
     expect(uni.hideLoading).toHaveBeenCalledTimes(1);
+    expect(uni.hideToast).toHaveBeenCalledTimes(1);
   });
 
   it('maps API errors to user-facing messages', () => {

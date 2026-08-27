@@ -24,6 +24,7 @@ function installUniMock() {
     showLoading: vi.fn(),
     hideLoading: vi.fn(),
     showToast: vi.fn(),
+    hideToast: vi.fn(),
   };
 }
 

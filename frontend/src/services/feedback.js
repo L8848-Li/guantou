@@ -136,7 +136,14 @@ export function hideLoading() {
   if (loadingReferences === 0) return;
   loadingReferences -= 1;
   // 只在最后一个请求结束（1→0）时关闭。
-  if (loadingReferences === 0) uni.hideLoading();
+  if (loadingReferences === 0) {
+    uni.hideLoading();
+    /* uni-h5 的 toast 与 loading 共享同一个弹层状态：若 loading 期间
+     * 穿插过 showToast，hideLoading 会因状态不匹配仅告警而不隐藏，
+     * 导致带 mask 的遮罩残留并拦截全局点击（E2E 已复现）；
+     * 补一次 hideToast 兜底，不匹配时运行时仅告警、无副作用。 */
+    uni.hideToast();
+  }
 }
 
 export function resetLoading() {
