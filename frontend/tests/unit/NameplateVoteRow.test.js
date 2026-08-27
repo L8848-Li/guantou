@@ -169,7 +169,7 @@ describe('NameplateVoteRow optimistic voting', () => {
     expect(wrapper.vm.supportCount).toBe(4);
   });
 
-  it('routes the body, comments and debate as separate nameplate actions', async () => {
+  it('routes the body and debate, and opens comments via the sheet event', async () => {
     requireAuth.mockReturnValue(true);
     const wrapper = mountRow({}, { canId: 33 });
 
@@ -180,10 +180,13 @@ describe('NameplateVoteRow optimistic voting', () => {
     expect(uni.navigateTo).toHaveBeenNthCalledWith(1, {
       url: '/pages/nameplates/details?id=7',
     });
-    expect(uni.navigateTo).toHaveBeenNthCalledWith(2, {
-      url: '/pages/nameplates/comments?id=7',
+    /* Issue #202/#219：铭牌评论入口改为发出半屏面板事件，游客可直接浏览，不再整页跳转 */
+    expect(wrapper.emitted('open-comments')).toBeTruthy();
+    expect(wrapper.emitted('open-comments')[0][0]).toMatchObject({
+      targetType: 'nameplate',
+      targetId: 7,
     });
-    expect(uni.navigateTo).toHaveBeenNthCalledWith(3, {
+    expect(uni.navigateTo).toHaveBeenNthCalledWith(2, {
       url: '/pages/nameplates/create?can_id=33&reference_id=7',
     });
   });

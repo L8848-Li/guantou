@@ -98,12 +98,14 @@
             class="home-feed__card"
             :can="can"
             :active="windowStart + offset === currentIndex"
+            @open-comments="$emit('open-comments', $event)"
           />
           <HomeActionRail
             v-if="windowStart + offset === currentIndex"
             class="home-feed__rail"
             :can="can"
             @share="$emit('share', $event)"
+            @open-comments="$emit('open-comments', $event)"
           />
         </view>
       </swiper-item>
@@ -146,7 +148,7 @@ export default {
       required: true,
     },
   },
-  emits: ['share'],
+  emits: ['share', 'open-comments'],
   data() {
     return {
       items: [],

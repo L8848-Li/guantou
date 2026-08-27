@@ -12,16 +12,20 @@ export function listCanComments(canId, params = {}) {
   return request.get('/comments/', { can_id: canId, ...params });
 }
 
-export function createCanComment(canId, content) {
-  return request.post('/comments/', { can_id: canId, content });
+export function createCanComment(canId, content, parentId = null) {
+  const payload = { can_id: canId, content };
+  if (parentId) payload.parent_id = parentId;
+  return request.post('/comments/', payload);
 }
 
 export function listNameplateComments(nameplateId, params = {}) {
   return request.get('/comments/', { nameplate_id: nameplateId, ...params });
 }
 
-export function createNameplateComment(nameplateId, content) {
-  return request.post('/comments/', { nameplate_id: nameplateId, content });
+export function createNameplateComment(nameplateId, content, parentId = null) {
+  const payload = { nameplate_id: nameplateId, content };
+  if (parentId) payload.parent_id = parentId;
+  return request.post('/comments/', payload);
 }
 
 export function deleteCanComment(commentId) {

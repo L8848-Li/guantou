@@ -67,7 +67,6 @@ import { requireAuth } from '@/services/authGuard';
 import { supportNameplate, unsupportNameplate } from '@/services/guantou';
 import {
   goCreateNameplate,
-  goNameplateComments,
   goNameplateDetail,
 } from '@/services/navigation';
 
@@ -100,7 +99,7 @@ export default {
       default: false,
     },
   },
-  emits: ['support', 'unsupport'],
+  emits: ['support', 'unsupport', 'open-comments'],
   data() {
     return {
       supported: Boolean(this.nameplate.supported_by_current_user),
@@ -142,7 +141,12 @@ export default {
       goNameplateDetail(this.nameplate.id);
     },
     openComments() {
-      goNameplateComments(this.nameplate.id);
+      /* 铭牌评论游客可浏览（issue #202）：打开半屏评论区（issue #219） */
+      this.$emit('open-comments', {
+        targetType: 'nameplate',
+        targetId: this.nameplate.id,
+        title: `铭牌评论 ${this.commentCount}`,
+      });
     },
     openDebate() {
       // “立论”创建竞争性观点，不代表修订或取代当前铭牌。

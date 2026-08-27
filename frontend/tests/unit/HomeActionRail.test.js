@@ -107,22 +107,20 @@ describe('HomeActionRail', () => {
   });
 
   describe('comment', () => {
-    it('blocks guest comments via the auth guard', async () => {
+    it('opens the comment sheet for guests without an auth gate (issue #202/#219)', async () => {
       requireAuth.mockReturnValue(false);
       const wrapper = mountRail(canFixture());
 
       await wrapper.find('[aria-label="评论"]').trigger('tap');
 
-      expect(requireAuth).toHaveBeenCalledWith('comment', { page: 'home_feed', canId: 12 });
-      expect(uni.navigateTo).not.toHaveBeenCalled();
-    });
-
-    it('navigates to the comments page when allowed', async () => {
-      const wrapper = mountRail(canFixture());
-
-      await wrapper.find('[aria-label="评论"]').trigger('tap');
-
-      expect(uni.navigateTo).toHaveBeenCalledWith({ url: '/pages/cans/comments?id=12' });
+      /* 评论浏览对游客放开：不走登录拦截，直接发出半屏面板事件 */
+      expect(requireAuth).not.toHaveBeenCalledWith('comment', expect.anything());
+      expect(wrapper.emitted('open-comments')).toBeTruthy();
+      expect(wrapper.emitted('open-comments')[0][0]).toEqual({
+        targetType: 'can',
+        targetId: 12,
+        title: '评论 2',
+      });
     });
   });
 

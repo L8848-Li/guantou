@@ -108,6 +108,53 @@ test('guest browses immersive feed, plays audio, and opens search', async ({ pag
       },
     });
   });
+  /* Issue #202/#219：评论接口 mock，带 parent_id 时返回二层回复 */
+  await page.route('**/comments/**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get('parent_id')) {
+      await route.fulfill({
+        json: {
+          count: 1,
+          next: null,
+          previous: null,
+          results: [{
+            id: 52,
+            can_id: 11,
+            nameplate_id: null,
+            parent_id: 51,
+            author: { id: 8, username: 'replier', nickname: '回复者', avatar: '' },
+            content: '二楼跟帖',
+            like_count: 0,
+            liked_by_me: false,
+            reply_count: 0,
+            reply_to_nickname: '',
+            created_at: '2026-08-27T10:00:00',
+          }],
+        },
+      });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        count: 1,
+        next: null,
+        previous: null,
+        results: [{
+          id: 51,
+          can_id: 11,
+          nameplate_id: null,
+          parent_id: null,
+          author: { id: 7, username: 'commenter', nickname: '评论者', avatar: '' },
+          content: '一级评论',
+          like_count: 0,
+          liked_by_me: false,
+          reply_count: 1,
+          reply_to_nickname: '',
+          created_at: '2026-08-27T09:00:00',
+        }],
+      },
+    });
+  });
   await page.route('**/cans/**', async (route) => {
     await route.fulfill({
       json: {
@@ -181,6 +228,16 @@ test('guest browses immersive feed, plays audio, and opens search', async ({ pag
   await page.locator('.play-button').click();
   await expect(page.locator('.play-button--playing')).toBeVisible();
   await expect(page.locator('.audio-wave--playing')).toBeVisible();
+  await expect(page).toHaveURL(/\/$/);
+
+  /* Issue #202/#219：游客点评论直接进入半屏评论区，无登录拦截；可展开二层回复并可关闭 */
+  await page.getByRole('button', { name: '评论', exact: true }).click();
+  await expect(page.locator('.comment-sheet__panel')).toBeVisible();
+  await expect(page.getByText('一级评论', { exact: true })).toBeVisible();
+  await page.locator('.comment-row__replies-toggle').click();
+  await expect(page.getByText('二楼跟帖', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '关闭评论面板' }).click();
+  await expect(page.locator('.comment-sheet__panel')).toBeHidden();
   await expect(page).toHaveURL(/\/$/);
 
   /* 搜索入口改为顶部搜索图标 */

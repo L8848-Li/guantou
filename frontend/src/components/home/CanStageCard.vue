@@ -89,6 +89,7 @@
           :nameplate="plate"
           :can-id="can.id"
           :compact="index > 0"
+          @open-comments="$emit('open-comments', $event)"
         />
         <view
           v-if="!previews.length"
@@ -151,6 +152,7 @@ export default {
       default: false,
     },
   },
+  emits: ['open-comments'],
   data() {
     return {
       playing: false,

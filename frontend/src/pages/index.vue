@@ -27,6 +27,7 @@
         class="home-page__feed"
         tab="today"
         @share="prepareShare"
+        @open-comments="openCommentSheet"
       />
       <HomeFeed
         v-else-if="activeTab === 'dialect'"
@@ -34,6 +35,7 @@
         class="home-page__feed"
         tab="dialect"
         @share="prepareShare"
+        @open-comments="openCommentSheet"
       />
       <HomeFeed
         v-else-if="activeTab === 'following'"
@@ -41,6 +43,7 @@
         class="home-page__feed"
         tab="following"
         @share="prepareShare"
+        @open-comments="openCommentSheet"
       />
       <HomeFeed
         v-else
@@ -48,14 +51,25 @@
         class="home-page__feed"
         tab="recommended"
         @share="prepareShare"
+        @open-comments="openCommentSheet"
       />
     </view>
 
     <HomeTabBar active="home" />
+
+    <!-- 抖音式半屏评论区（issue #219），游客可浏览（issue #202） -->
+    <CommentSheet
+      v-model="commentSheet.open"
+      theme="immersive"
+      :target-type="commentSheet.targetType"
+      :target-id="commentSheet.targetId"
+      :title="commentSheet.title"
+    />
   </view>
 </template>
 
 <script>
+import CommentSheet from '@/components/comments/CommentSheet.vue';
 import HomeFeed from '@/components/home/HomeFeed.vue';
 import HomeTabBar from '@/components/home/HomeTabBar.vue';
 import HomeTopBar from '@/components/home/HomeTopBar.vue';
@@ -68,6 +82,7 @@ import { stopAudio } from '@/utils/audio';
 
 export default {
   components: {
+    CommentSheet,
     HomeFeed,
     HomeTabBar,
     HomeTopBar,
@@ -78,6 +93,12 @@ export default {
       userSelectedTab: false,
       pendingShareCan: null,
       feedRevision: 0,
+      commentSheet: {
+        open: false,
+        targetType: 'can',
+        targetId: null,
+        title: '评论',
+      },
     };
   },
   created() {
@@ -134,6 +155,12 @@ export default {
     },
     prepareShare(can) {
       this.pendingShareCan = can;
+    },
+    openCommentSheet(target) {
+      this.commentSheet.targetType = target.targetType;
+      this.commentSheet.targetId = target.targetId;
+      this.commentSheet.title = target.title || '评论';
+      this.commentSheet.open = true;
     },
   },
 };

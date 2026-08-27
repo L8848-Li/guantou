@@ -98,7 +98,6 @@ import { likeCan, unlikeCan } from '@/services/canSocial';
 import { followUser, unfollowUser } from '@/services/following';
 import { toUserPage } from '@/routers/user';
 import { shareCanOnWeb } from '@/utils/shareCan';
-import { goCanComments } from '@/services/navigation';
 
 export default {
   name: 'HomeActionRail',
@@ -108,7 +107,7 @@ export default {
       required: true,
     },
   },
-  emits: ['share'],
+  emits: ['share', 'open-comments'],
   data() {
     return {
       liked: Boolean(this.can.liked_by_me),
@@ -184,8 +183,13 @@ export default {
       }
     },
     openComments() {
-      if (!requireAuth('comment', { page: 'home_feed', canId: this.can.id })) return;
-      goCanComments(this.can.id);
+      /* 评论属于可浏览内容（issue #202）：游客也可打开半屏评论区（issue #219），
+      仅发布/点赞/回复需登录，由 CommentThread 内部拦截 */
+      this.$emit('open-comments', {
+        targetType: 'can',
+        targetId: this.can.id,
+        title: `评论 ${this.formatCount(this.can.comment_count || 0)}`,
+      });
     },
     async share() {
       this.$emit('share', this.can);

@@ -11,7 +11,7 @@
  * - 颜色：--page-color（页面底色）/--surface-color（卡片等浮层）/--text-color（正文）
  *   /--muted-color（次要文字）/--border-color（描边）/--accent-color（品牌强调）
  *   /--danger-color / --warning-color / --success-color（语义色）
- *   /--on-accent-color（强调色背景上的文字/图标）
+ *   /--on-accent-color（强调色背景上的文字/图标）/--veil-color（弹层遮罩）
  * - 派生色：--text-secondary-color（正文与次要文字之间）/--surface-subtle-color（弱底色，
  *   如按钮/禁用态背景）/--accent-subtle-color（强调色浅底，如徽章）
  *   /--danger-subtle-color（危险色浅底）/--on-danger-color（危险色实心背景上的文字）
@@ -36,6 +36,7 @@
   --on-danger-color: #ffffff;
   --warning-color: #ed7b2f;
   --success-color: #2ba471;
+  --veil-color: rgba(29, 42, 36, 0.5);
 }
 
 @mixin dark-color-tokens {
@@ -54,6 +55,7 @@
   --on-danger-color: #2b1010;
   --warning-color: #f5a56c;
   --success-color: #5fce9f;
+  --veil-color: rgba(0, 0, 0, 0.55);
 }
 
 @mixin static-tokens {
