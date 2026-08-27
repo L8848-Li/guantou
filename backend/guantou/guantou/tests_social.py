@@ -411,3 +411,175 @@ class CanSocialApiTests(TestCase):
                 verb=Notification.Verb.CAN_REUSE,
             ).exists()
         )
+
+
+class CanCommentGuestAndReplyTests(CanSocialApiTests):
+    """游客浏览评论放开（issue #202）与二重回复层级（issue #219）。"""
+
+    def test_guests_can_browse_public_can_comments_without_login(self):
+        CanComment.objects.create(
+            can=self.same_can, author=self.viewer, content="欢迎浏览"
+        )
+        CanComment.objects.create(
+            can=self.private_can, author=self.viewer, content="看不见"
+        )
+
+        self.client.force_authenticate(None)
+        response = self.client.get("/comments/", {"can_id": self.same_can.id})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data["results"]), 1)
+        self.assertEqual(response.data["results"][0]["content"], "欢迎浏览")
+        self.assertFalse(response.data["results"][0]["liked_by_me"])
+
+    def test_guest_cannot_publish_or_like_comments(self):
+        comment = CanComment.objects.create(
+            can=self.same_can, author=self.viewer, content="一楼"
+        )
+        self.client.force_authenticate(None)
+
+        created = self.client.post(
+            "/comments/",
+            {"can_id": self.same_can.id, "content": "游客的评论"},
+            format="json",
+        )
+        liked = self.client.put(f"/comments/{comment.id}/like/")
+
+        self.assertEqual(created.status_code, 401)
+        self.assertEqual(liked.status_code, 401)
+
+    def test_default_list_only_shows_top_level_and_replies_load_via_parent_id(self):
+        root = CanComment.objects.create(
+            can=self.same_can, author=self.viewer, content="一楼"
+        )
+        reply = self.client.post(
+            "/comments/",
+            {
+                "can_id": self.same_can.id,
+                "content": "跟帖回复",
+                "parent_id": root.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(reply.status_code, 201)
+        self.assertEqual(reply.data["parent_id"], root.id)
+
+        top = self.client.get("/comments/", {"can_id": self.same_can.id})
+        self.assertEqual([item["id"] for item in top.data["results"]], [root.id])
+        self.assertEqual(top.data["results"][0]["reply_count"], 1)
+
+        replies = self.client.get(
+            "/comments/", {"can_id": self.same_can.id, "parent_id": root.id}
+        )
+        self.assertEqual(
+            [item["id"] for item in replies.data["results"]], [reply.data["id"]]
+        )
+
+    def test_reply_to_reply_flattens_to_second_level_with_at_prefix(self):
+        root = CanComment.objects.create(
+            can=self.same_can, author=self.same_author, content="一楼"
+        )
+        first_reply = self.client.post(
+            "/comments/",
+            {
+                "can_id": self.same_can.id,
+                "content": "二楼",
+                "parent_id": root.id,
+            },
+            format="json",
+        )
+
+        self.client.force_authenticate(self.other_author)
+        nested = self.client.post(
+            "/comments/",
+            {
+                "can_id": self.same_can.id,
+                "content": "对二楼的跟帖",
+                "parent_id": first_reply.data["id"],
+            },
+            format="json",
+        )
+
+        self.assertEqual(nested.status_code, 201)
+        # 深层回复收敛到一级评论下，仍保持二层平铺。
+        self.assertEqual(nested.data["parent_id"], root.id)
+        self.assertEqual(nested.data["reply_to_nickname"], "Viewer")
+
+        replies = self.client.get(
+            "/comments/", {"can_id": self.same_can.id, "parent_id": root.id}
+        )
+        self.assertEqual(
+            [item["id"] for item in replies.data["results"]],
+            [first_reply.data["id"], nested.data["id"]],
+        )
+
+    def test_reply_rejects_cross_target_or_missing_parent(self):
+        root = CanComment.objects.create(
+            can=self.same_can, author=self.viewer, content="一楼"
+        )
+
+        cross_can = self.client.post(
+            "/comments/",
+            {
+                "can_id": self.other_can.id,
+                "content": "跨罐头",
+                "parent_id": root.id,
+            },
+            format="json",
+        )
+        self.assertEqual(cross_can.status_code, 400)
+
+        plate = Nameplate.objects.create(
+            can=self.same_can,
+            creator=self.same_author,
+            text_content="巴适",
+            source={"type": Nameplate.SourceType.CREATOR},
+        )
+        cross_nameplate = self.client.post(
+            "/comments/",
+            {
+                "nameplate_id": plate.id,
+                "content": "跨铭牌",
+                "parent_id": root.id,
+            },
+            format="json",
+        )
+        self.assertEqual(cross_nameplate.status_code, 400)
+
+        missing_parent = self.client.get(
+            "/comments/", {"can_id": self.same_can.id, "parent_id": 999999}
+        )
+        self.assertEqual(missing_parent.status_code, 400)
+
+    def test_nameplate_replies_stay_within_the_same_nameplate(self):
+        plate = Nameplate.objects.create(
+            can=self.same_can,
+            creator=self.same_author,
+            text_content="巴适",
+            source={"type": Nameplate.SourceType.CREATOR},
+        )
+        root = self.client.post(
+            "/comments/",
+            {"nameplate_id": plate.id, "content": "铭牌讨论"},
+            format="json",
+        )
+        reply = self.client.post(
+            "/comments/",
+            {
+                "nameplate_id": plate.id,
+                "content": "铭牌跟帖",
+                "parent_id": root.data["id"],
+            },
+            format="json",
+        )
+
+        self.assertEqual(reply.status_code, 201)
+        top = self.client.get("/comments/", {"nameplate_id": plate.id})
+        self.assertEqual(
+            [item["id"] for item in top.data["results"]], [root.data["id"]]
+        )
+        replies = self.client.get(
+            "/comments/", {"nameplate_id": plate.id, "parent_id": root.data["id"]}
+        )
+        self.assertEqual(len(replies.data["results"]), 1)

@@ -955,9 +955,17 @@ class CanCommentSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True,
     )
+    parent_id = serializers.PrimaryKeyRelatedField(
+        source="parent",
+        queryset=CanComment.objects.filter(can__visibility=True),
+        required=False,
+        allow_null=True,
+    )
     author = UserLiteSerializer(read_only=True)
     like_count = serializers.SerializerMethodField()
     liked_by_me = serializers.SerializerMethodField()
+    reply_count = serializers.SerializerMethodField()
+    reply_to_nickname = serializers.SerializerMethodField()
 
     class Meta:
         model = CanComment
@@ -965,10 +973,13 @@ class CanCommentSerializer(serializers.ModelSerializer):
             "id",
             "can_id",
             "nameplate_id",
+            "parent_id",
             "author",
             "content",
             "like_count",
             "liked_by_me",
+            "reply_count",
+            "reply_to_nickname",
             "created_at",
         ]
         read_only_fields = ["id", "author", "created_at"]
@@ -976,7 +987,7 @@ class CanCommentSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         attrs = super().validate(attrs)
         if self.instance:
-            if "can" in attrs or "nameplate" in attrs:
+            if "can" in attrs or "nameplate" in attrs or "parent" in attrs:
                 raise serializers.ValidationError("评论目标创建后不可修改")
             return attrs
         can = attrs.get("can")
@@ -985,6 +996,17 @@ class CanCommentSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "can_id 与 nameplate_id 必须且只能提供一个"
             )
+        parent = attrs.get("parent")
+        if parent:
+            if nameplate:
+                if parent.nameplate_id != nameplate.id:
+                    raise serializers.ValidationError("回复必须位于同一铭牌讨论下")
+            elif parent.can_id != can.id or parent.nameplate_id is not None:
+                raise serializers.ValidationError("回复必须位于同一罐头的公共评论下")
+            # 二重层级：对回复的回复收敛到一级评论下，并以 @ 标记直接回复对象。
+            if parent.parent_id:
+                attrs["reply_to"] = parent.author
+                attrs["parent"] = parent.parent
         if nameplate:
             attrs["can"] = nameplate.can
         return attrs
@@ -1010,6 +1032,18 @@ class CanCommentSerializer(serializers.ModelSerializer):
             and user.is_authenticated
             and CanCommentLike.objects.filter(comment=obj, user=user).exists()
         )
+
+    def get_reply_count(self, obj):
+        annotated = getattr(obj, "reply_count", None)
+        return annotated if annotated is not None else obj.replies.count()
+
+    def get_reply_to_nickname(self, obj):
+        user = obj.reply_to
+        if not user:
+            return ""
+        info = getattr(user, "user_info", None)
+        nickname = info.nickname if info else ""
+        return nickname or user.username
 
 
 class CanSerializer(CanCardSerializer):
@@ -1063,7 +1097,7 @@ class CanSerializer(CanCardSerializer):
         user = request.user if request else None
         # nameplate=NULL 是罐头公共评论与具体铭牌讨论的隔离边界。
         queryset = (
-            obj.comments.filter(nameplate__isnull=True)
+            obj.comments.filter(nameplate__isnull=True, parent__isnull=True)
             .select_related("author", "author__user_info")
             .annotate(like_count=Count("likes", distinct=True))
         )

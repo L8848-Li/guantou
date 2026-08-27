@@ -804,10 +804,19 @@ class CanCommentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = (
             CanComment.objects.select_related(
-                "author", "author__user_info", "can", "nameplate", "nameplate__creator"
+                "author",
+                "author__user_info",
+                "can",
+                "nameplate",
+                "nameplate__creator",
+                "reply_to",
+                "reply_to__user_info",
             )
             .filter(can__visibility=True)
-            .annotate(like_count=Count("likes", distinct=True))
+            .annotate(
+                like_count=Count("likes", distinct=True),
+                reply_count=Count("replies", distinct=True),
+            )
         )
         user = self.request.user
         if user and user.is_authenticated:
@@ -821,11 +830,24 @@ class CanCommentViewSet(viewsets.ModelViewSet):
         if self.action == "list":
             if bool(can_id) == bool(nameplate_id):
                 raise BadRequestException("can_id 与 nameplate_id 必须且只能提供一个")
+            parent_id = self.request.query_params.get("parent_id")
+            if parent_id:
+                # 回复列表：校验父评论归属当前目标，避免跨目标泄露。
+                parent_qs = CanComment.objects.filter(pk=parent_id)
+                if nameplate_id:
+                    parent_qs = parent_qs.filter(nameplate_id=nameplate_id)
+                else:
+                    parent_qs = parent_qs.filter(can_id=can_id, nameplate__isnull=True)
+                if not parent_qs.exists():
+                    raise BadRequestException("父评论不存在或不属于当前目标")
+                return queryset.filter(parent_id=parent_id).order_by("created_at", "id")
             if nameplate_id:
                 queryset = queryset.filter(nameplate_id=nameplate_id)
             else:
                 # nameplate=NULL 是罐头公共评论与具体铭牌讨论的隔离边界。
                 queryset = queryset.filter(can_id=can_id, nameplate__isnull=True)
+            # 默认列表只返回一级评论，回复经 parent_id 参数单独拉取。
+            queryset = queryset.filter(parent__isnull=True)
         return queryset.order_by("-created_at", "-id")
 
     def perform_create(self, serializer):
