@@ -4,23 +4,60 @@ name: GuanTou-XiangShengJiHe-design
 description: 乡声集盒（GuanTou）uni-app 跨端设计系统。以品牌深绿 #1f5c43 为核心的自然、乡土气质；浅色/暗色双主题 + 首页沉浸式深绿场景三套颜色 Token；rpx 自适应无断点布局；宋体/楷体文化字形用于方言展示。唯一颜色来源为 frontend/src/styles/tokens.scss，禁止组件内新增 hex 字面量。
 
 colors:
-  primary: "#1f5c43"
-  on-primary: "#ffffff"
-  ink: "#1d2a24"
-  body: "#425148"
-  muted: "#647068"
-  canvas: "#f6f7f3"
-  surface-card: "#ffffff"
-  surface-soft: "#f2f4ef"
-  accent-subtle: "#e8f1eb"
-  hairline: "#e1e6dc"
-  danger: "#d54941"
-  on-danger: "#ffffff"
-  warning: "#ed7b2f"
-  success: "#2ba471"
-  immersive-bg: "#0a1410"
-  on-immersive: "#eef6f0"
-  immersive-accent: "#8fd6ac"
+  # 与 tokens.scss 的 light/dark-color-tokens 一一对应；组件消费 CSS 变量，
+  # 暗色自动翻转，frontmatter 同时编码两套供机器消费。
+  light:
+    page: "#f6f7f3"
+    surface: "#ffffff"
+    surface-subtle: "#f2f4ef"
+    text: "#1d2a24"
+    text-secondary: "#425148"
+    muted: "#647068"
+    border: "#e1e6dc"
+    accent: "#1f5c43"
+    accent-subtle: "#e8f1eb"
+    on-accent: "#ffffff"
+    danger: "#d54941"
+    danger-subtle: "#fff1ed"
+    on-danger: "#ffffff"
+    warning: "#ed7b2f"
+    success: "#2ba471"
+  dark:
+    page: "#121915"
+    surface: "#1d2822"
+    surface-subtle: "#26312b"
+    text: "#edf4ef"
+    text-secondary: "#c3d1c7"
+    muted: "#a9b8ae"
+    border: "#34443a"
+    accent: "#69b58b"
+    accent-subtle: "#24402f"
+    on-accent: "#10201a"
+    danger: "#fb8f86"
+    danger-subtle: "#46282a"
+    on-danger: "#2b1010"
+    warning: "#f5a56c"
+    success: "#5fce9f"
+  # 固定深色，不随明暗主题翻转，仅 .immersive-shell 子树消费
+  immersive:
+    bg: "#0a1410"
+    bg-soft: "#13261d"
+    bg-strong: "#1f5c43"
+    glow: "rgba(105, 181, 139, 0.28)"
+    veil: "rgba(6, 13, 10, 0.44)"
+    # 键名加引号：裸 on 会被 YAML 解析为布尔值，机器消费方需按字符串 "on" 读取
+    "on": "#eef6f0"
+    on-muted: "rgba(226, 238, 230, 0.64)"
+    on-faint: "rgba(226, 238, 230, 0.36)"
+    icon: "#f1f7f2"
+    surface: "rgba(238, 246, 240, 0.09)"
+    surface-strong: "rgba(238, 246, 240, 0.18)"
+    border: "rgba(238, 246, 240, 0.16)"
+    accent: "#8fd6ac"
+    wave: "rgba(238, 246, 240, 0.3)"
+    wave-active: "#9fe0bd"
+    skeleton: "rgba(238, 246, 240, 0.08)"
+    skeleton-highlight: "rgba(238, 246, 240, 0.18)"
 
 typography:
   display-lg:
@@ -87,79 +124,81 @@ spacing:
   xl: 48rpx
 
 components:
+  # 组件契约以浅色主题为基准编码；暗色经同名语义 Token 自动翻转，
+  # 沉浸式组件固定消费 immersive 组。
   button-primary:
-    backgroundColor: "{colors.primary}"
-    textColor: "{colors.on-primary}"
+    backgroundColor: "{colors.light.accent}"
+    textColor: "{colors.light.on-accent}"
     typography: "{typography.button-md}"
     rounded: "{rounded.pill}"
   button-primary-disabled:
-    backgroundColor: "{colors.surface-soft}"
-    textColor: "{colors.muted}"
+    backgroundColor: "{colors.light.surface-subtle}"
+    textColor: "{colors.light.muted}"
     typography: "{typography.button-md}"
     rounded: "{rounded.pill}"
   button-ghost:
-    backgroundColor: "{colors.surface-card}"
-    textColor: "{colors.primary}"
+    backgroundColor: "{colors.light.surface}"
+    textColor: "{colors.light.accent}"
     typography: "{typography.button-md}"
     rounded: "{rounded.pill}"
   button-danger:
-    backgroundColor: "{colors.danger}"
-    textColor: "{colors.on-danger}"
+    backgroundColor: "{colors.light.danger}"
+    textColor: "{colors.light.on-danger}"
     typography: "{typography.button-md}"
     rounded: "{rounded.pill}"
   text-input:
-    backgroundColor: "{colors.surface-card}"
-    textColor: "{colors.ink}"
+    backgroundColor: "{colors.light.surface}"
+    textColor: "{colors.light.text}"
     typography: "{typography.body-md}"
     rounded: "{rounded.md}"
     padding: "{spacing.sm}"
   card-can:
-    backgroundColor: "{colors.surface-card}"
-    textColor: "{colors.ink}"
+    backgroundColor: "{colors.light.surface}"
+    textColor: "{colors.light.text}"
     typography: "{typography.body-md}"
     rounded: "{rounded.lg}"
     padding: "{spacing.md}"
   card-entity:
-    backgroundColor: "{colors.surface-card}"
-    textColor: "{colors.ink}"
+    backgroundColor: "{colors.light.surface}"
+    textColor: "{colors.light.text}"
     typography: "{typography.body-md}"
     rounded: "{rounded.lg}"
     padding: "{spacing.md}"
   section-block:
-    backgroundColor: "{colors.surface-card}"
-    textColor: "{colors.ink}"
+    backgroundColor: "{colors.light.surface}"
+    textColor: "{colors.light.text}"
     typography: "{typography.body-md}"
     rounded: "{rounded.lg}"
     padding: "{spacing.md}"
   chip-accent:
-    backgroundColor: "{colors.accent-subtle}"
-    textColor: "{colors.primary}"
+    backgroundColor: "{colors.light.accent-subtle}"
+    textColor: "{colors.light.accent}"
     typography: "{typography.caption}"
     rounded: "{rounded.pill}"
   chip-danger:
-    backgroundColor: "#fff1ed"
-    textColor: "{colors.danger}"
+    backgroundColor: "{colors.light.danger-subtle}"
+    textColor: "{colors.light.danger}"
     typography: "{typography.caption}"
     rounded: "{rounded.pill}"
   dialog-confirm:
-    backgroundColor: "{colors.surface-card}"
-    textColor: "{colors.ink}"
+    backgroundColor: "{colors.light.surface}"
+    textColor: "{colors.light.text}"
     typography: "{typography.body-md}"
     rounded: "{rounded.lg}"
     padding: "{spacing.md}"
   immersive-can-card:
-    backgroundColor: "{colors.immersive-bg}"
-    textColor: "{colors.on-immersive}"
+    backgroundColor: "{colors.immersive.bg}"
+    textColor: "{colors.immersive.on}"
     typography: "{typography.body-md}"
     rounded: "{rounded.lg}"
   immersive-action-icon:
-    backgroundColor: "rgba(238, 246, 240, 0.09)"
-    textColor: "{colors.on-immersive}"
+    backgroundColor: "{colors.immersive.surface}"
+    textColor: "{colors.immersive.on}"
     typography: "{typography.caption}"
     rounded: "{rounded.pill}"
   tabbar-home:
-    backgroundColor: "{colors.immersive-bg}"
-    textColor: "{colors.on-immersive}"
+    backgroundColor: "{colors.immersive.bg}"
+    textColor: "{colors.immersive.on}"
     typography: "{typography.caption}"
 ---
 
@@ -170,7 +209,7 @@ components:
 
 ## Overview
 
-乡声集盒是一款方言文化记录与社交应用（H5 / 微信小程序 / App 三端，uni-app Vue3）。产品气质：**自然、乡土、沉静** —— 品牌深绿 `{colors.primary}`（#1f5c43）为中心，米白页面底 `{colors.canvas}`，宋体/楷体文化字形承载方言文本展示。
+乡声集盒是一款方言文化记录与社交应用（H5 / 微信小程序 / App 三端，uni-app Vue3）。产品气质：**自然、乡土、沉静** —— 品牌深绿 `{colors.light.accent}`（#1f5c43）为中心，米白页面底 `{colors.light.page}`，宋体/楷体文化字形承载方言文本展示。
 
 三条核心约束：
 
@@ -186,20 +225,20 @@ components:
 
 | 角色 | Token | 浅色 | 暗色 |
 | --- | --- | --- | --- |
-| 页面底 | `--page-color` / `{colors.canvas}` | #f6f7f3 | #121915 |
-| 浮层/卡片 | `--surface-color` / `{colors.surface-card}` | #ffffff | #1d2822 |
-| 弱底色 | `--surface-subtle-color` / `{colors.surface-soft}` | #f2f4ef | #26312b |
-| 正文 | `--text-color` / `{colors.ink}` | #1d2a24 | #edf4ef |
-| 次要正文 | `--text-secondary-color` / `{colors.body}` | #425148 | #c3d1c7 |
-| 辅助文字 | `--muted-color` / `{colors.muted}` | #647068 | #a9b8ae |
-| 描边 | `--border-color` / `{colors.hairline}` | #e1e6dc | #34443a |
-| 品牌强调 | `--accent-color` / `{colors.primary}` | #1f5c43 | #69b58b |
-| 强调浅底 | `--accent-subtle-color` / `{colors.accent-subtle}` | #e8f1eb | #24402f |
+| 页面底 | `--page-color` / `{colors.light.page}` | #f6f7f3 | #121915 |
+| 浮层/卡片 | `--surface-color` / `{colors.light.surface}` | #ffffff | #1d2822 |
+| 弱底色 | `--surface-subtle-color` / `{colors.light.surface-subtle}` | #f2f4ef | #26312b |
+| 正文 | `--text-color` / `{colors.light.text}` | #1d2a24 | #edf4ef |
+| 次要正文 | `--text-secondary-color` / `{colors.light.text-secondary}` | #425148 | #c3d1c7 |
+| 辅助文字 | `--muted-color` / `{colors.light.muted}` | #647068 | #a9b8ae |
+| 描边 | `--border-color` / `{colors.light.border}` | #e1e6dc | #34443a |
+| 品牌强调 | `--accent-color` / `{colors.light.accent}` | #1f5c43 | #69b58b |
+| 强调浅底 | `--accent-subtle-color` / `{colors.light.accent-subtle}` | #e8f1eb | #24402f |
 | 危险/警告/成功 | `--danger/--warning/--success-color` | #d54941 / #ed7b2f / #2ba471 | #fb8f86 / #f5a56c / #5fce9f |
 
-主行动按钮、链接、选中态使用 `{colors.primary}`；危险实心按钮文字用 `{colors.on-danger}`；徽章用 `{colors.accent-subtle}` 浅底。
+主行动按钮、链接、选中态使用 `{colors.light.accent}`；危险实心按钮文字用 `{colors.light.on-danger}`；徽章用 `{colors.light.accent-subtle}` 浅底。
 
-**沉浸式色（固定深色，仅 `.immersive-shell` 子树 / `confirmed`）：** 三档深绿渐变底（`--immersive-bg-color` #0a1410 / `--immersive-bg-soft-color` / `--immersive-bg-strong-color` 复用品牌深绿）、深底文字三档（`--on-immersive-color` / muted / faint）、玻璃表面与描边（`--immersive-surface-*`、`--immersive-border-color`）、深底强调 `{colors.immersive-accent}`（#8fd6ac）与波形色。
+**沉浸式色（固定深色，仅 `.immersive-shell` 子树 / `confirmed`）：** 三档深绿渐变底（`--immersive-bg-color` #0a1410 / `--immersive-bg-soft-color` / `--immersive-bg-strong-color` 复用品牌深绿）、深底文字三档（`--on-immersive-color` / muted / faint）、玻璃表面与描边（`--immersive-surface-*`、`--immersive-border-color`）、深底强调 `{colors.immersive.accent}`（#8fd6ac）与波形色。
 
 **TDesign 品牌映射（`confirmed`）：** `--td-brand-color-1..10` 以 #1f5c43 为 6 档构建深绿梯度，`--td-primary/error/warning/success-color-6` 指向项目语义 Token，保证 `t-*` 组件与全站一致。
 
@@ -223,7 +262,7 @@ components:
 
 ## Elevation & Depth
 
-产品以**描边 + 底色分层**为主，几乎不使用阴影：卡片用 `{colors.hairline}` 1rpx 描边叠加 `{colors.surface-card}` 与页面底 `{colors.canvas}` 的明度差。沉浸场景用玻璃表面（半透明白 9%~18%）与氛围光 `box-shadow: 0 0 12rpx var(--immersive-glow-color)` 表达深度。遮罩统一走 `--uni-bg-color-mask`（rgba(0,0,0,0.4)）。
+产品以**描边 + 底色分层**为主，几乎不使用阴影：卡片用 `{colors.light.border}` 1rpx 描边叠加 `{colors.light.surface}` 与页面底 `{colors.light.page}` 的明度差。沉浸场景用玻璃表面（半透明白 9%~18%）与氛围光 `box-shadow: 0 0 12rpx var(--immersive-glow-color)` 表达深度。遮罩统一走 `--uni-bg-color-mask`（rgba(0,0,0,0.4)）。
 
 ## Shapes
 
@@ -253,7 +292,7 @@ Do:
 - 颜色一律 `var(--*)` / Token 取值，新增颜色先入 `tokens.scss`。
 - 按钮/输入/弹层优先复用 `BaseButton` / `BaseField` / `ConfirmDialog` 原语。
 - 沉浸场景新代码只用 `--immersive-*` / `--on-immersive-*`。
-- 图标用 ColorUI `cuIcon-*` 字体类；动画用 ColorUI `animation-*` 类，不手写 keyframes。
+- 图标与动画：新建/迁移 UI 禁止新增 `cu-*` 类（AGENTS.md 约束，遗留用法见 Known Gaps）；动画允许组件作用域 `@keyframes`（如 `immersive-shimmer`、`action-rail-enter`），须支持 `prefers-reduced-motion` 降级；图标优先 TDesign 图标或文字图形。
 - TDesign 组件必须经品牌映射消费（勿覆盖回默认蓝）。
 
 Don't:
@@ -275,8 +314,7 @@ Don't:
 
 - `needs-design-decision`：**字形 Token 化** —— 宋体/楷体家族在多个页面重复硬编码（`pages/nameplates/*`、`pages/cans/details.vue`、`login.vue`、`AppShell.vue` 等），建议新增 `--font-family-display-song/kai` Token。
 - `design-debt`：**存量硬编码色** —— `SearchPanel.vue`（#f6f7f3/#1d2a24/#1f5c43 等 10+ 处）、`CanDraftList.vue`（含 `confirmColor: '#9b3a2d'`，该色不在 Token 体系内）仍使用 hex 字面量，其中多数值与浅色 Token 重合，应替换为 `var(--*)`。
-- `design-debt`：**ColorUI 遗留样式** —— `colorui/main.css` 等含大量硬编码色与 `upx` 单位，计划于 M3/M4 页面迁移完成后清理（13 个页面仍依赖 `cu-*` 类）。
-- `conflict`：**TDesign 暗色不同步** —— `t-*` 组件暗色跟随系统 media query，与项目 `data-theme` 机制不一致（tokens.scss 注释已声明待对齐）。
+- `design-debt`：**ColorUI 遗留样式** —— `colorui/main.css` 等含大量硬编码色与 `upx` 单位；新建/迁移 UI 已禁止新增 `cu-*` 类（见 AGENTS.md），存量 13 个页面仍依赖 `cu-*` 类（含 `cuIcon-*` 图标），计划于 M3/M4 页面迁移完成后清理。
 - `conflict`：**uni.scss 默认值** —— `$uni-color-primary: #007aff` 与品牌深绿冲突；仅为三方插件兼容保留，业务代码不得引用。
 - `tentative`：**字号上限** —— `--font-size-xl`(36rpx) 不足以覆盖展示型大字（44~76rpx 目前页面内硬编码），展示型字号策略待定。
 - `u-parse.css` 为第三方 Markdown 渲染遗留样式，独立于主样式体系，不在本契约管辖内。
