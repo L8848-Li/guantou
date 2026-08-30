@@ -1,5 +1,7 @@
 import { mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach, beforeEach, describe, expect, it, vi,
+} from 'vitest';
 
 vi.mock('@/services/guantou', () => ({
   supportNameplate: vi.fn(),
@@ -52,6 +54,10 @@ describe('NameplateVoteRow optimistic voting', () => {
     setupUni();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('supports optimistically, then adopts the server counts', async () => {
     let resolveSupport;
     supportNameplate.mockImplementation(
@@ -90,6 +96,28 @@ describe('NameplateVoteRow optimistic voting', () => {
     expect(wrapper.emitted('support')).toBeFalsy();
   });
 
+  it('clears the burst feedback when the support request fails', async () => {
+    vi.useFakeTimers();
+    supportNameplate.mockRejectedValue(new Error('boom'));
+    const wrapper = mountRow();
+
+    await wrapper.find('.vote-row__support').trigger('tap');
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+
+    // 失败回滚：乐观态撤销的同时撤除爆发反馈类名与定时器
+    expect(wrapper.vm.supported).toBe(false);
+    expect(wrapper.vm.supportBurst).toBe(false);
+    expect(wrapper.find('.vote-row__support').classes())
+      .not.toContain('vote-row__support--burst');
+
+    // 撤除定时器已清理：时间推进后不会残留状态变化副作用（无异常即可）
+    vi.advanceTimersByTime(800);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.supportBurst).toBe(false);
+  });
+
   it('unsupports with an optimistic decrement', async () => {
     unsupportNameplate.mockResolvedValue({});
     const wrapper = mountRow({ supported_by_current_user: true, support_count: 6 });
@@ -102,6 +130,63 @@ describe('NameplateVoteRow optimistic voting', () => {
     expect(wrapper.vm.supported).toBe(false);
     expect(wrapper.vm.supportCount).toBe(5);
     expect(wrapper.emitted('unsupport')).toBeTruthy();
+  });
+
+  it('plays the one-shot burst feedback when a support lands, then clears it', async () => {
+    vi.useFakeTimers();
+    supportNameplate.mockResolvedValue({ support_count: 4, supported_by_current_user: true });
+    const wrapper = mountRow();
+
+    await wrapper.find('.vote-row__support').trigger('tap');
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.vm.supportBurst).toBe(true);
+    expect(wrapper.find('.vote-row__support').classes()).toContain('vote-row__support--burst');
+
+    // 动画结束后撤除类名：不循环，可再次触发；撤销支持不播放
+    vi.advanceTimersByTime(800);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.supportBurst).toBe(false);
+
+    unsupportNameplate.mockResolvedValue({});
+    await wrapper.find('.vote-row__support').trigger('tap');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.supportBurst).toBe(false);
+  });
+
+  it('restarts the burst on a quick support → unsupport → support sequence', async () => {
+    vi.useFakeTimers();
+    supportNameplate.mockResolvedValue({ support_count: 4, supported_by_current_user: true });
+    unsupportNameplate.mockResolvedValue({});
+    const wrapper = mountRow();
+
+    // 第一次支持：爆发反馈置位，仍在撤除窗口内
+    await wrapper.find('.vote-row__support').trigger('tap');
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.supportBurst).toBe(true);
+    vi.advanceTimersByTime(100);
+
+    // 撤销支持：立即清除残留爆发态与撤除定时器，不留窗口
+    await wrapper.find('.vote-row__support').trigger('tap');
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.supportBurst).toBe(false);
+    expect(wrapper.find('.vote-row__support').classes())
+      .not.toContain('vote-row__support--burst');
+
+    // 再次支持：类名先移除后重新附加，第二次动画必然重启
+    await wrapper.find('.vote-row__support').trigger('tap');
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.supportBurst).toBe(true);
+    expect(wrapper.find('.vote-row__support').classes())
+      .toContain('vote-row__support--burst');
+
+    // 新的撤除定时器生效：窗口结束后再次自动清除类名（不循环）
+    vi.advanceTimersByTime(800);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.supportBurst).toBe(false);
   });
 
   it('keeps a busy lock to avoid double voting', async () => {

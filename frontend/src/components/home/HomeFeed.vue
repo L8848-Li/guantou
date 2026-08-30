@@ -109,6 +109,15 @@
       </swiper-item>
     </swiper>
 
+    <!-- 加载更多指示：加载中显示，完成/无更多/失败时隐藏 -->
+    <view
+      v-if="loadingMore"
+      class="home-feed__load-more"
+      aria-hidden="true"
+    >
+      <view class="home-feed__spinner" />
+    </view>
+
     <!-- 加载更多失败条 -->
     <view
       v-if="errorMessage && items.length"
@@ -415,6 +424,43 @@ export default {
   border: 1rpx solid var(--immersive-border-color);
   color: var(--on-immersive-muted-color);
   font-size: var(--font-size-xs);
+}
+
+/* ---------- 加载更多指示 ---------- */
+.home-feed__load-more {
+  position: absolute;
+  left: 50%;
+  bottom: 24rpx;
+  transform: translateX(-50%);
+  z-index: 4;
+  padding: 12rpx 24rpx;
+  border-radius: var(--radius-pill);
+  background: var(--immersive-surface-color);
+  border: 1rpx solid var(--immersive-border-color);
+  display: flex;
+  align-items: center;
+}
+
+.home-feed__spinner {
+  width: 28rpx;
+  height: 28rpx;
+  border-radius: 50%;
+  border: 3rpx solid var(--immersive-border-color);
+  border-top-color: var(--immersive-accent-color);
+  animation: home-feed-spin 0.8s linear infinite;
+}
+
+@keyframes home-feed-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 退化为静态圆环，不旋转 */
+  .home-feed__spinner {
+    animation: none;
+  }
 }
 
 /* ---------- 骨架屏 ---------- */

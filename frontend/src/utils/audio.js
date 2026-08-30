@@ -4,11 +4,44 @@ let preloadContext = null;
 
 const MANAGED_THROTTLE_MS = 200;
 
+/* 受控句柄被外部停止/置换时的订阅者集合（CanStageCard 等用它复位本地播放态） */
+const externalStopListeners = new Set();
+
+function notifyExternalStop() {
+  externalStopListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch (error) {
+      /* 单个订阅者异常不应阻断其他订阅者的状态复位 */
+    }
+  });
+}
+
+/**
+ * 订阅「外部停止」广播：受控句柄被 stopAudio / playAudio / playManaged
+ * 等外部路径停止或置换时触发（自然播完/报错走句柄自身回调，不广播）。
+ * 订阅方只应复位本地展示态，回调内不得再调 stopAudio，避免递归。
+ * 返回取消订阅函数。
+ */
+export function onExternalStop(callback) {
+  if (typeof callback !== 'function') return () => {};
+  externalStopListeners.add(callback);
+  return () => {
+    externalStopListeners.delete(callback);
+  };
+}
+
+export function offExternalStop(callback) {
+  externalStopListeners.delete(callback);
+}
+
 function disposeManagedHandle() {
   if (!managedHandle) return;
   const handle = managedHandle;
   managedHandle = null;
   handle.destroy();
+  /* destroy 不触发任何句柄回调，改由广播通知订阅者复位 */
+  notifyExternalStop();
 }
 
 function releasePreload() {

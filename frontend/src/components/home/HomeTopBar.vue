@@ -1,7 +1,7 @@
 <template>
   <view class="home-top-bar">
     <view class="home-top-bar__row">
-      <!-- 左侧轻入口 -->
+      <!-- 左侧轻入口：纯 CSS 具象图标，深底高对比 -->
       <view class="home-top-bar__entries">
         <view
           class="home-top-bar__entry"
@@ -9,9 +9,10 @@
           aria-label="方言圈"
           @tap="toCircles"
         >
-          <text class="home-top-bar__entry-glyph">
-            ◎
-          </text>
+          <view
+            class="home-top-bar__icon home-top-bar__icon--circle"
+            aria-hidden="true"
+          />
         </view>
         <view
           class="home-top-bar__entry"
@@ -19,9 +20,10 @@
           aria-label="发现"
           @tap="toDiscovery"
         >
-          <text class="home-top-bar__entry-glyph">
-            ✦
-          </text>
+          <view
+            class="home-top-bar__icon home-top-bar__icon--compass"
+            aria-hidden="true"
+          />
         </view>
       </view>
 
@@ -136,12 +138,13 @@ export default {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 6rpx;
+  gap: 4rpx;
 }
 
+/* 可点区域不小于 64rpx */
 .home-top-bar__entry {
-  width: 56rpx;
-  height: 56rpx;
+  width: 64rpx;
+  height: 64rpx;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -153,10 +156,73 @@ export default {
   background: var(--immersive-surface-color);
 }
 
-.home-top-bar__entry-glyph {
-  color: var(--on-immersive-muted-color);
-  font-size: 30rpx;
-  line-height: 1;
+/* 统一线框图标基座：4rpx 描边、主色高对比 */
+.home-top-bar__icon {
+  position: relative;
+  color: var(--on-immersive-color);
+}
+
+/* 方言圈：对话气泡 + 内两点（乡友围谈） */
+.home-top-bar__icon--circle {
+  width: 36rpx;
+  height: 30rpx;
+  border: 4rpx solid currentColor;
+  border-radius: 14rpx;
+  box-sizing: border-box;
+}
+
+.home-top-bar__icon--circle::before {
+  content: '';
+  position: absolute;
+  left: 7rpx;
+  top: 8rpx;
+  width: 5rpx;
+  height: 5rpx;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 10rpx 0 0 currentColor;
+}
+
+.home-top-bar__icon--circle::after {
+  content: '';
+  position: absolute;
+  left: 7rpx;
+  bottom: -10rpx;
+  width: 0;
+  height: 0;
+  border-top: 9rpx solid currentColor;
+  border-right: 9rpx solid transparent;
+}
+
+/* 发现：指南针（圆环 + 双向指针） */
+.home-top-bar__icon--compass {
+  width: 36rpx;
+  height: 36rpx;
+  border: 4rpx solid currentColor;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.home-top-bar__icon--compass::before,
+.home-top-bar__icon--compass::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  width: 0;
+  height: 0;
+  margin-left: -5rpx;
+  border-left: 5rpx solid transparent;
+  border-right: 5rpx solid transparent;
+}
+
+.home-top-bar__icon--compass::before {
+  top: 2rpx;
+  border-bottom: 10rpx solid currentColor;
+}
+
+.home-top-bar__icon--compass::after {
+  bottom: 2rpx;
+  border-top: 10rpx solid currentColor;
 }
 
 /* ---------- tab ---------- */
@@ -219,8 +285,8 @@ export default {
 /* ---------- 搜索 ---------- */
 .home-top-bar__search {
   flex: 0 0 auto;
-  width: 56rpx;
-  height: 56rpx;
+  width: 64rpx;
+  height: 64rpx;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -263,11 +329,12 @@ export default {
   transform: rotate(45deg);
 }
 
-/* ---------- 品牌小标 ---------- */
+/* ---------- 品牌小标 ----------
+ * faint（0.36）对比度过弱，顶栏文本改用次级令牌保证可读 */
 .home-top-bar__brand {
   margin-top: 6rpx;
   text-align: center;
-  color: var(--on-immersive-faint-color);
+  color: var(--on-immersive-muted-color);
   font-size: 18rpx;
   letter-spacing: 6rpx;
 }

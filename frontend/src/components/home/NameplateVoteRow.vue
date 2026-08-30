@@ -38,7 +38,10 @@
     <view class="plate-card__actions">
       <view
         class="plate-card__action vote-row__support"
-        :class="{ 'plate-card__action--active': supported }"
+        :class="{
+          'plate-card__action--active': supported,
+          'vote-row__support--burst': supportBurst,
+        }"
         role="button"
         @tap.stop="toggle"
       >
@@ -106,6 +109,9 @@ export default {
       supported: Boolean(this.nameplate.supported_by_current_user),
       supportCount: Number(this.nameplate.support_count || 0),
       busy: false,
+      /* 支持成功时的一次性爆发反馈（与点赞同一套反馈语言） */
+      supportBurst: false,
+      supportBurstTimer: null,
     };
   },
   computed: {
@@ -137,6 +143,9 @@ export default {
       this.supportCount = Number(next.support_count || 0);
     },
   },
+  beforeUnmount() {
+    if (this.supportBurstTimer) clearTimeout(this.supportBurstTimer);
+  },
   methods: {
     openDetail() {
       goNameplateDetail(this.nameplate.id);
@@ -164,6 +173,12 @@ export default {
       this.busy = true;
       this.supported = target;
       this.supportCount += target ? 1 : -1;
+      /* 乐观提交即触发反馈，失败回滚时撤销；撤销支持路径清除残留爆发态 */
+      if (target) {
+        this.playSupportBurst();
+      } else {
+        this.clearSupportBurst();
+      }
       try {
         const response = target
           ? await supportNameplate(this.nameplate.id)
@@ -176,9 +191,40 @@ export default {
       } catch (error) {
         this.supported = !target;
         this.supportCount += target ? -1 : 1;
+        /* 失败回滚时同步撤除爆发反馈 */
+        this.clearSupportBurst();
       } finally {
         this.busy = false;
       }
+    },
+    playSupportBurst() {
+      /* 乐观提交即触发：先清旧定时器并复位，$nextTick 后再置位，保证
+       * 700ms 窗口期内「支持→撤销→再支持」的第二次动画必然重启。
+       * 代际序号让延迟置位可被 clearSupportBurst 作废：失败回滚后不会迟到置位 */
+      if (this.supportBurstTimer) clearTimeout(this.supportBurstTimer);
+      this.supportBurstTimer = null;
+      this.supportBurst = false;
+      this.supportBurstEpoch = (this.supportBurstEpoch || 0) + 1;
+      const epoch = this.supportBurstEpoch;
+      this.$nextTick(() => {
+        /* 窗口期内被取消（失败回滚/撤销支持）或被新一轮播放覆盖则放弃置位 */
+        if (epoch !== this.supportBurstEpoch) return;
+        this.supportBurst = true;
+        /* 动画 0.5s，留余量后撤除类名，保证不循环且可再次触发 */
+        this.supportBurstTimer = setTimeout(() => {
+          this.supportBurst = false;
+          this.supportBurstTimer = null;
+        }, 700);
+      });
+    },
+    clearSupportBurst() {
+      /* 失败回滚/撤销支持：作废尚未置位的延迟动作，并同步撤除定时器与类名 */
+      this.supportBurstEpoch = (this.supportBurstEpoch || 0) + 1;
+      if (this.supportBurstTimer) {
+        clearTimeout(this.supportBurstTimer);
+        this.supportBurstTimer = null;
+      }
+      this.supportBurst = false;
     },
   },
 };
@@ -247,6 +293,7 @@ export default {
 
 .plate-card__action {
   flex: 1;
+  position: relative;
   padding: 17rpx 8rpx;
   background: var(--immersive-surface-strong-color);
   color: var(--on-immersive-color);
@@ -264,6 +311,65 @@ export default {
 .plate-card__action--debate {
   background: var(--immersive-accent-color);
   color: var(--immersive-bg-color);
+}
+
+/* ---------- 支持爆发反馈（一次性，与点赞同一套语言） ---------- */
+.vote-row__support--burst {
+  animation: support-pop 0.5s ease-out;
+}
+
+@keyframes support-pop {
+  0% {
+    transform: scale(1);
+  }
+
+  35% {
+    transform: scale(1.1);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* 高光一闪：按钮内侧柔光淡入淡出 */
+.vote-row__support--burst::after {
+  content: '';
+  position: absolute;
+  inset: 4rpx;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 20rpx var(--immersive-glow-color);
+  pointer-events: none;
+  animation: support-flash 0.5s ease-out forwards;
+}
+
+@keyframes support-flash {
+  0% {
+    opacity: 0;
+  }
+
+  30% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 降级为纯颜色变化 */
+  .vote-row__support--burst {
+    animation: none;
+  }
+
+  .vote-row__support--burst::after {
+    display: none;
+  }
+
+  .plate-card__action {
+    transition: none;
+  }
 }
 
 /* ---------- 紧凑形态（首页副铭牌） ----------

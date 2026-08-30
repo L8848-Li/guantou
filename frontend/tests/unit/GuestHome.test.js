@@ -19,12 +19,22 @@ vi.mock('@/services/guantou', () => ({
   unsupportNameplate: vi.fn(),
 }));
 
-vi.mock('@/utils/audio', () => ({
-  playAudio: vi.fn(),
-  playManaged: vi.fn(),
-  stopAudio: vi.fn(),
-  preload: vi.fn(),
-}));
+vi.mock('@/utils/audio', () => {
+  /* 外部停止广播的订阅集合：收敛在工厂内部，测试通过导出的 __externalStopListeners 触发 */
+  const externalStopListeners = new Set();
+  return {
+    playAudio: vi.fn(),
+    playManaged: vi.fn(),
+    stopAudio: vi.fn(),
+    preload: vi.fn(),
+    onExternalStop: vi.fn((callback) => {
+      externalStopListeners.add(callback);
+      return () => externalStopListeners.delete(callback);
+    }),
+    offExternalStop: vi.fn((callback) => externalStopListeners.delete(callback)),
+    __externalStopListeners: externalStopListeners,
+  };
+});
 
 import HomePage from '@/pages/index.vue';
 import CanStageCard from '@/components/home/CanStageCard.vue';
@@ -32,6 +42,7 @@ import HomeTabBar from '@/components/home/HomeTabBar.vue';
 import NameplateVoteRow from '@/components/home/NameplateVoteRow.vue';
 import { getNameplatePreview, resolveDefaultTab } from '@/services/homeFeed';
 import { supportNameplate } from '@/services/guantou';
+import * as audioModule from '@/utils/audio';
 
 function setupUni(token = '') {
   globalThis.uni = {
@@ -45,6 +56,9 @@ function setupUni(token = '') {
   globalThis.getApp = vi.fn(() => ({ globalData: {} }));
 }
 
+/* 记录每个 HomeFeed 实例的挂载，验证 tab 缓存不重复重建 */
+const homeFeedMounts = [];
+
 function mountHome() {
   return mount(HomePage, {
     global: {
@@ -52,6 +66,9 @@ function mountHome() {
         HomeFeed: {
           props: ['tab'],
           template: '<div class="home-feed-stub" :data-tab="tab" />',
+          mounted() {
+            homeFeedMounts.push(this.tab);
+          },
         },
         HomeTopBar: {
           props: ['activeTab'],
@@ -69,9 +86,34 @@ function triggerShow(wrapper) {
   (Array.isArray(hook) ? hook : [hook]).forEach((fn) => fn.call(wrapper.vm));
 }
 
+function stageCanFixture(overrides = {}) {
+  return {
+    id: 11,
+    concept_text: '舒服',
+    audio_url: 'https://example.com/a.mp3',
+    nameplate_previews: [],
+    nameplate_total: 0,
+    recorder: { id: 3, nickname: '老乡', avatar: '' },
+    submitted_dialect: { qualified_code: '西南官话.四川' },
+    status: 'verified',
+    ...overrides,
+  };
+}
+
+function mountStageCard(overrides = {}) {
+  return mount(CanStageCard, {
+    props: {
+      can: stageCanFixture(overrides),
+      active: true,
+    },
+  });
+}
+
 describe('immersive home (Issue #192)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    homeFeedMounts.length = 0;
+    audioModule.__externalStopListeners.clear();
     resolveDefaultTab.mockReturnValue('recommended');
     getNameplatePreview.mockReturnValue({ previews: [], total: 0 });
   });
@@ -255,6 +297,55 @@ describe('immersive home (Issue #192)', () => {
     }));
   });
 
+  it('keeps visited feeds mounted and never re-mounts a revisited tab', async () => {
+    setupUni();
+    const wrapper = mountHome();
+
+    // 首屏仅挂载当前激活的 tab
+    expect(wrapper.findAll('.home-feed-stub')).toHaveLength(1);
+    expect(homeFeedMounts).toEqual(['recommended']);
+
+    // 切到新 tab：新建一个 feed 实例
+    wrapper.vm.switchTab('dialect');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.findAll('.home-feed-stub')).toHaveLength(2);
+    expect(homeFeedMounts).toEqual(['recommended', 'dialect']);
+
+    // 切回已访问的 tab：保持挂载，仅切换可见性（不重建不重请求）
+    wrapper.vm.switchTab('recommended');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.findAll('.home-feed-stub')).toHaveLength(2);
+    expect(homeFeedMounts).toEqual(['recommended', 'dialect']);
+
+    const stubs = wrapper.findAll('.home-feed-stub');
+    const dialectStub = stubs.find((stub) => stub.attributes('data-tab') === 'dialect');
+    const recommendedStub = stubs.find((stub) => stub.attributes('data-tab') === 'recommended');
+    expect(dialectStub.element.style.display).toBe('none');
+    expect(recommendedStub.element.style.display).not.toBe('none');
+  });
+
+  it('keeps at most two feeds alive and lazy-reloads evicted tabs', async () => {
+    setupUni();
+    const wrapper = mountHome();
+
+    wrapper.vm.switchTab('dialect');
+    await wrapper.vm.$nextTick();
+    wrapper.vm.switchTab('today');
+    await wrapper.vm.$nextTick();
+
+    // 超出上限：最旧的 recommended 被卸载，仅保留最近访问的 2 个
+    expect(wrapper.vm.visitedTabs).toEqual(['dialect', 'today']);
+    expect(wrapper.findAll('.home-feed-stub')).toHaveLength(2);
+    expect(homeFeedMounts).toEqual(['recommended', 'dialect', 'today']);
+
+    // 回访被卸载的 tab：按首次进入的懒加载流程重新挂载，最旧者再次被挤出
+    wrapper.vm.switchTab('recommended');
+    await wrapper.vm.$nextTick();
+    expect(homeFeedMounts).toEqual(['recommended', 'dialect', 'today', 'recommended']);
+    expect(wrapper.vm.visitedTabs).toEqual(['today', 'recommended']);
+    expect(wrapper.findAll('.home-feed-stub')).toHaveLength(2);
+  });
+
   it('keeps the feed state when returning without an auth change', () => {
     setupUni('token-value');
     const wrapper = mountHome();
@@ -290,5 +381,53 @@ describe('immersive home (Issue #192)', () => {
     triggerShow(wrapper);
 
     expect(wrapper.vm.feedRevision).toBe(1);
+  });
+
+  it('converges alive feeds to the active tab when the fingerprint changes', async () => {
+    setupUni('');
+    const wrapper = mountHome();
+
+    // 先常驻两个 tab（用户已手动选择，onShow 不会重置 activeTab）
+    wrapper.vm.switchTab('dialect');
+    await wrapper.vm.$nextTick();
+    expect(homeFeedMounts).toEqual(['recommended', 'dialect']);
+
+    // 模拟登录后返回首页：指纹变化 → 仅当前激活 tab 重挂载，避免多路并发重建
+    setupUni('token-value');
+    triggerShow(wrapper);
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.vm.feedRevision).toBe(1);
+    expect(wrapper.vm.visitedTabs).toEqual(['dialect']);
+    const stubs = wrapper.findAll('.home-feed-stub');
+    expect(stubs).toHaveLength(1);
+    expect(stubs[0].attributes('data-tab')).toBe('dialect');
+    // 只有当前 tab 因 key 变化重挂载一次，其余常驻实例全部卸载而非重建
+    expect(homeFeedMounts).toEqual(['recommended', 'dialect', 'dialect']);
+  });
+
+  it('resets the stage card playback state when playback is stopped externally', async () => {
+    setupUni();
+    const wrapper = mountStageCard();
+    await wrapper.vm.$nextTick();
+
+    // 模拟播放中：本地展示态已建立（进度/秒数非零）
+    wrapper.vm.playing = true;
+    wrapper.vm.progress = 0.5;
+    wrapper.vm.progressSeconds = 3;
+
+    // 触发外部停止广播（切 tab / 跳详情 / 被其他播放顶掉）
+    audioModule.__externalStopListeners.forEach((callback) => callback());
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.vm.playing).toBe(false);
+    expect(wrapper.vm.progress).toBe(0);
+    expect(wrapper.vm.progressSeconds).toBe(0);
+    // 回调只复位本地状态，不得再调 stopAudio（避免递归广播）
+    expect(audioModule.stopAudio).not.toHaveBeenCalled();
+
+    // 卸载后取消订阅，不再接收广播也不泄漏监听器
+    wrapper.unmount();
+    expect(audioModule.__externalStopListeners.size).toBe(0);
   });
 });

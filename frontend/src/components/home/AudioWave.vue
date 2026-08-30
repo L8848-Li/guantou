@@ -61,6 +61,7 @@ export default {
 
 <style scoped>
 .audio-wave {
+  position: relative;
   display: flex;
   align-items: center;
   /* 首页 3 张铭牌（含副铭牌操作条）布局预算下收紧一档（Issue #218） */
@@ -68,7 +69,30 @@ export default {
   width: 100%;
 }
 
+/* 播放光晕改为单个渐变底层：比逐条 box-shadow 模糊便宜得多，
+ * 低端机不需要为 26 条波形各自计算投影，观感保持 */
+.audio-wave::before {
+  content: '';
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 50%;
+  height: 64rpx;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse, var(--immersive-glow-color) 0%, transparent 75%);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+.audio-wave--playing::before {
+  opacity: 1;
+}
+
 .audio-wave__bar {
+  position: relative;
+  z-index: 1;
   flex: 1;
   min-width: 4rpx;
   height: calc(var(--bar-height) * 1%);
@@ -83,16 +107,16 @@ export default {
   animation-delay: var(--bar-delay);
   animation-iteration-count: infinite;
   animation-play-state: paused;
-  transition: background-color 0.35s ease, box-shadow 0.35s ease;
+  transition: background-color 0.35s ease;
 }
 
 .audio-wave--playing .audio-wave__bar {
   animation-play-state: running;
 }
 
+/* 点亮条不再自带 box-shadow，发光感由底层渐变统一提供 */
 .audio-wave__bar--lit {
   background: var(--immersive-wave-active-color);
-  box-shadow: 0 0 14rpx var(--immersive-glow-color);
 }
 
 @keyframes wave-pulse {

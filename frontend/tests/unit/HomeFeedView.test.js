@@ -142,4 +142,34 @@ describe('HomeFeed five states', () => {
     expect(getTodayCan).toHaveBeenCalled();
     expect(wrapper.find('.home-feed__swiper').exists()).toBe(true);
   });
+
+  it('shows the load-more spinner while fetching the next page, then hides it', async () => {
+    listHomeFeed
+      .mockResolvedValueOnce({
+        results: [
+          { id: 1, audio_url: 'https://example.test/a.mp3' },
+          { id: 2, audio_url: 'https://example.test/b.mp3' },
+          { id: 3, audio_url: 'https://example.test/c.mp3' },
+          { id: 4, audio_url: 'https://example.test/d.mp3' },
+        ],
+        next: 'https://example.test/api?page=2',
+      });
+    let resolveMore;
+    listHomeFeed.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveMore = resolve;
+    }));
+
+    const wrapper = mountFeed('recommended');
+    await flushPromises();
+    expect(wrapper.find('.home-feed__load-more').exists()).toBe(false);
+
+    wrapper.vm.loadMore();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('.home-feed__load-more').exists()).toBe(true);
+    expect(wrapper.find('.home-feed__spinner').exists()).toBe(true);
+
+    resolveMore({ results: [], next: null });
+    await flushPromises();
+    expect(wrapper.find('.home-feed__load-more').exists()).toBe(false);
+  });
 });

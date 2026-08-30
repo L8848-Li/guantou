@@ -34,7 +34,7 @@
       </view>
     </view>
 
-    <!-- 赞 -->
+    <!-- 赞：纯 CSS 实心爱心，激活态走情感暖色 + pop/光环/粒子反馈 -->
     <view
       class="action-rail__item"
       role="button"
@@ -43,13 +43,24 @@
     >
       <view
         class="action-rail__bubble"
-        :class="{ 'action-rail__bubble--liked': liked }"
+        :class="{
+          'action-rail__bubble--liked': liked,
+          'action-rail__bubble--burst': likeBurst,
+        }"
       >
-        <text class="action-rail__heart">
-          {{ liked ? '♥' : '♡' }}
-        </text>
+        <view
+          class="action-rail__heart"
+          :class="{ 'action-rail__heart--pop': likeBurst }"
+          aria-hidden="true"
+        />
       </view>
-      <text class="action-rail__count">
+      <text
+        class="action-rail__count"
+        :class="{
+          'action-rail__count--liked': liked,
+          'action-rail__count--pop': likeBurst,
+        }"
+      >
         {{ formatCount(likeCount) }}
       </text>
     </view>
@@ -116,6 +127,9 @@ export default {
       likeBusy: false,
       following: Boolean(this.can.recorder_followed_by_me),
       followBusy: false,
+      /* 点赞爆发反馈（一次性动画，定时撤除类名以便下次重触发） */
+      likeBurst: false,
+      likeBurstTimer: null,
     };
   },
   computed: {
@@ -129,6 +143,9 @@ export default {
       this.likeCount = Number(next.like_count || 0);
       this.following = Boolean(next.recorder_followed_by_me);
     },
+  },
+  beforeUnmount() {
+    if (this.likeBurstTimer) clearTimeout(this.likeBurstTimer);
   },
   methods: {
     formatCount(value) {
@@ -170,6 +187,12 @@ export default {
       const target = !this.liked;
       this.liked = target;
       this.likeCount += target ? 1 : -1;
+      /* 乐观提交即触发反馈，失败回滚时撤销；取消赞路径清除残留爆发态 */
+      if (target) {
+        this.playLikeBurst();
+      } else {
+        this.clearLikeBurst();
+      }
       try {
         const response = target ? await likeCan(this.can.id) : await unlikeCan(this.can.id);
         if (response && Number.isFinite(Number(response.like_count))) {
@@ -179,6 +202,8 @@ export default {
       } catch (error) {
         this.liked = !target;
         this.likeCount += target ? -1 : 1;
+        /* 失败回滚时同步撤除爆发反馈 */
+        this.clearLikeBurst();
       } finally {
         this.likeBusy = false;
       }
@@ -192,6 +217,35 @@ export default {
       // #ifdef H5
       await shareCanOnWeb(this.can);
       // #endif
+    },
+    playLikeBurst() {
+      /* 乐观提交即触发：先清旧定时器并复位，$nextTick 后再置位，保证
+       * 800ms 窗口期内「赞→取消→再赞」的第二次动画必然重启。
+       * 代际序号让延迟置位可被 clearLikeBurst 作废：失败回滚后不会迟到置位 */
+      if (this.likeBurstTimer) clearTimeout(this.likeBurstTimer);
+      this.likeBurstTimer = null;
+      this.likeBurst = false;
+      this.likeBurstEpoch = (this.likeBurstEpoch || 0) + 1;
+      const epoch = this.likeBurstEpoch;
+      this.$nextTick(() => {
+        /* 窗口期内被取消（失败回滚/取消赞）或被新一轮播放覆盖则放弃置位 */
+        if (epoch !== this.likeBurstEpoch) return;
+        this.likeBurst = true;
+        /* 动画时长 0.6s，留一档余量后撤除类名，保证不循环且可再次触发 */
+        this.likeBurstTimer = setTimeout(() => {
+          this.likeBurst = false;
+          this.likeBurstTimer = null;
+        }, 800);
+      });
+    },
+    clearLikeBurst() {
+      /* 失败回滚/取消赞：作废尚未置位的延迟动作，并同步撤除定时器与类名 */
+      this.likeBurstEpoch = (this.likeBurstEpoch || 0) + 1;
+      if (this.likeBurstTimer) {
+        clearTimeout(this.likeBurstTimer);
+        this.likeBurstTimer = null;
+      }
+      this.likeBurst = false;
     },
   },
 };
@@ -329,6 +383,7 @@ export default {
 }
 
 .action-rail__bubble {
+  position: relative;
   width: 84rpx;
   height: 84rpx;
   border-radius: 50%;
@@ -344,19 +399,51 @@ export default {
   transform: scale(0.88);
 }
 
+/* 点赞激活：暖色描边接管，品牌绿仅留给结构性强调 */
 .action-rail__bubble--liked {
   background: var(--immersive-surface-strong-color);
-  border-color: var(--immersive-accent-color);
+  border-color: var(--immersive-like-color);
 }
 
+/* 纯 CSS 实心爱心：与气泡/分享同为 ~40rpx 图标宽，节奏一致 */
 .action-rail__heart {
-  font-size: 42rpx;
-  line-height: 1;
+  position: relative;
+  width: 40rpx;
+  height: 36rpx;
   color: var(--immersive-icon-color);
+  transition: color 0.25s ease;
+}
+
+.action-rail__heart::before,
+.action-rail__heart::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 20rpx;
+  height: 32rpx;
+  border-radius: 20rpx 20rpx 0 0;
+  background: currentColor;
+}
+
+.action-rail__heart::before {
+  left: 20rpx;
+  transform: rotate(-45deg);
+  transform-origin: 0 100%;
+}
+
+.action-rail__heart::after {
+  left: 0;
+  transform: rotate(45deg);
+  transform-origin: 100% 100%;
 }
 
 .action-rail__bubble--liked .action-rail__heart {
-  color: var(--immersive-accent-color);
+  color: var(--immersive-like-color);
+}
+
+/* 已赞按压时暖色加深一档（派生态令牌消费点） */
+.action-rail__item:active .action-rail__bubble--liked .action-rail__heart {
+  color: var(--immersive-like-strong-color);
 }
 
 .action-rail__count {
@@ -364,15 +451,137 @@ export default {
   font-size: var(--font-size-xs);
   font-weight: 700;
   letter-spacing: 1rpx;
+  transition: color 0.25s ease;
 }
 
-/* 纯 CSS 气泡图标 */
+.action-rail__count--liked {
+  color: var(--immersive-like-color);
+}
+
+/* ---------- 点赞爆发反馈（一次性，尊重 reduced-motion） ---------- */
+.action-rail__heart--pop {
+  animation: rail-like-pop 0.6s ease-out;
+}
+
+@keyframes rail-like-pop {
+  0% {
+    transform: scale(1);
+  }
+
+  35% {
+    transform: scale(1.32);
+  }
+
+  65% {
+    transform: scale(0.9);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+.action-rail__count--pop {
+  animation: rail-count-pop 0.5s ease-out;
+}
+
+@keyframes rail-count-pop {
+  0% {
+    transform: translateY(0);
+  }
+
+  40% {
+    transform: translateY(-8rpx) scale(1.12);
+  }
+
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 光环一闪：气泡外圈扩散淡出 */
+.action-rail__bubble--burst::after {
+  content: '';
+  position: absolute;
+  inset: -4rpx;
+  border-radius: 50%;
+  border: 3rpx solid var(--immersive-like-glow-color);
+  pointer-events: none;
+  animation: rail-like-ring 0.6s ease-out forwards;
+}
+
+@keyframes rail-like-ring {
+  0% {
+    transform: scale(0.75);
+    opacity: 0.9;
+  }
+
+  100% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+
+/* 轻量粒子：单元素 + box-shadow 复刻六点星散，比多节点更便宜 */
+.action-rail__bubble--burst::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6rpx;
+  height: 6rpx;
+  margin: -3rpx 0 0 -3rpx;
+  border-radius: 50%;
+  background: var(--immersive-like-color);
+  box-shadow:
+    0 -36rpx 0 var(--immersive-like-color),
+    31rpx -18rpx 0 var(--immersive-like-glow-color),
+    31rpx 18rpx 0 var(--immersive-like-color),
+    0 36rpx 0 var(--immersive-like-glow-color),
+    -31rpx 18rpx 0 var(--immersive-like-color),
+    -31rpx -18rpx 0 var(--immersive-like-glow-color);
+  pointer-events: none;
+  animation: rail-like-sparks 0.6s ease-out forwards;
+}
+
+@keyframes rail-like-sparks {
+  0% {
+    transform: scale(0.35);
+    opacity: 0;
+  }
+
+  25% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1.15);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .action-rail__heart--pop,
+  .action-rail__count--pop,
+  .action-rail__bubble--burst::before,
+  .action-rail__bubble--burst::after {
+    /* 降级为纯颜色变化：光环/粒子直接不渲染 */
+    animation: none;
+  }
+
+  .action-rail__bubble--burst::before,
+  .action-rail__bubble--burst::after {
+    display: none;
+  }
+}
+
+/* 纯 CSS 气泡图标：4rpx 描边，与爱心/转发箭头同语言 */
 .action-rail__comment-icon {
   position: relative;
   width: 40rpx;
   height: 32rpx;
   border: 4rpx solid var(--immersive-icon-color);
-  border-radius: 16rpx;
+  border-radius: 14rpx;
   box-sizing: border-box;
 }
 

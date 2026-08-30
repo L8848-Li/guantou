@@ -21,29 +21,35 @@
     />
 
     <view class="home-page__body">
+      <!-- 已访问过的 tab 保持挂载（v-if 常驻），v-show 切换可见性：
+           切回已加载的 tab 不重请求、不闪烁；首次进入仍走原加载流程 -->
       <HomeFeed
-        v-if="activeTab === 'today'"
+        v-if="isTabAlive('today')"
+        v-show="activeTab === 'today'"
         :key="`today-${feedRevision}`"
         class="home-page__feed"
         tab="today"
         @share="prepareShare"
       />
       <HomeFeed
-        v-else-if="activeTab === 'dialect'"
+        v-if="isTabAlive('dialect')"
+        v-show="activeTab === 'dialect'"
         :key="`dialect-${feedRevision}`"
         class="home-page__feed"
         tab="dialect"
         @share="prepareShare"
       />
       <HomeFeed
-        v-else-if="activeTab === 'following'"
+        v-if="isTabAlive('following')"
+        v-show="activeTab === 'following'"
         :key="`following-${feedRevision}`"
         class="home-page__feed"
         tab="following"
         @share="prepareShare"
       />
       <HomeFeed
-        v-else
+        v-if="isTabAlive('recommended')"
+        v-show="activeTab === 'recommended'"
         :key="`recommended-${feedRevision}`"
         class="home-page__feed"
         tab="recommended"
@@ -70,6 +76,10 @@ import { SHARE_TITLE } from '@/const/branding';
 import { canSharePayload } from '@/utils/shareCan';
 import { stopAudio } from '@/utils/audio';
 
+/* 常驻 feed 数量上限：只保留最近访问的 2 个 tab，超出者从头部卸载，
+ * 回访时按首次进入的懒加载流程重建，限制内存与并发请求 */
+const MAX_ALIVE_TABS = 2;
+
 export default {
   components: {
     CommentSheet,
@@ -80,12 +90,16 @@ export default {
   data() {
     return {
       activeTab: resolveDefaultTab(),
+      /* 已挂载的 feed tab：访问过即常驻，切回不重建不重请求 */
+      visitedTabs: [],
       userSelectedTab: false,
       pendingShareCan: null,
       feedRevision: 0,
     };
   },
   created() {
+    /* 默认 tab 直接标记已访问，保持首次加载行为不变 */
+    this.ensureTabVisited(this.activeTab);
     /* 记录首次可见时的登录态指纹（非响应式），供 onShow 比对 */
     this.lastFeedFingerprint = this.feedFingerprint();
   },
@@ -105,9 +119,13 @@ export default {
      */
     if (!this.userSelectedTab) {
       this.activeTab = resolveDefaultTab();
+      this.ensureTabVisited(this.activeTab);
     }
     if (this.feedFingerprint() !== this.lastFeedFingerprint) {
       this.lastFeedFingerprint = this.feedFingerprint();
+      /* 指纹变化时把常驻集合收敛为仅当前激活 tab：
+       * 避免全部常驻 feed 同时重建产生多路并发请求 */
+      this.visitedTabs = [this.activeTab];
       this.feedRevision += 1;
     }
   },
@@ -131,10 +149,25 @@ export default {
       const dialect = info ? info.primary_dialect : null;
       return `${isLoggedIn() ? 'auth' : 'guest'}:${dialect ? JSON.stringify(dialect) : ''}`;
     },
+    isTabAlive(tab) {
+      return this.visitedTabs.includes(tab);
+    },
+    /* 访问过的 tab 移入队尾（最近访问），超出上限时从队头卸载最旧者 */
+    ensureTabVisited(tab) {
+      const index = this.visitedTabs.indexOf(tab);
+      if (index >= 0) {
+        this.visitedTabs.splice(index, 1);
+      }
+      this.visitedTabs.push(tab);
+      if (this.visitedTabs.length > MAX_ALIVE_TABS) {
+        this.visitedTabs.splice(0, this.visitedTabs.length - MAX_ALIVE_TABS);
+      }
+    },
     switchTab(tab) {
       if (tab === this.activeTab) return;
       stopAudio();
       this.userSelectedTab = true;
+      this.ensureTabVisited(tab);
       this.activeTab = tab;
     },
     prepareShare(can) {
@@ -212,7 +245,7 @@ export default {
   padding-bottom: calc(118rpx + env(safe-area-inset-bottom));
 }
 
-/* tab 切换时 feed 进入侧淡入（v-if 卸载侧不做退场，避免引入 <transition>） */
+/* feed 首次挂载淡入；已访问的 tab 经 v-show 切换不再重播，避免闪烁 */
 .home-page__feed {
   animation: home-feed-enter 0.2s ease-out;
 }
