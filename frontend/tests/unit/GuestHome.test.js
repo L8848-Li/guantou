@@ -20,12 +20,33 @@ vi.mock('@/services/guantou', () => ({
 }));
 
 vi.mock('@/utils/audio', () => {
-  /* 外部停止广播的订阅集合：收敛在工厂内部，测试通过导出的 __externalStopListeners 触发 */
+  /* 忠实复刻真实 audio.js 的调用顺序：受控播放全局互斥，
+   * playManaged/stopAudio 先销毁旧句柄并向订阅者广播（携带被停止句柄），
+   * 再创建/返回新句柄。测试借此覆盖 A→B 置换播放的竞态。 */
   const externalStopListeners = new Set();
+  let managedHandle = null;
+  const notifyExternalStop = (stoppedHandle) => {
+    externalStopListeners.forEach((callback) => callback(stoppedHandle));
+  };
+  const playManaged = vi.fn((src) => {
+    if (managedHandle) {
+      const stopped = managedHandle;
+      managedHandle = null;
+      notifyExternalStop(stopped);
+    }
+    managedHandle = { src, destroy: vi.fn() };
+    return managedHandle;
+  });
+  const stopAudio = vi.fn(() => {
+    if (!managedHandle) return;
+    const stopped = managedHandle;
+    managedHandle = null;
+    notifyExternalStop(stopped);
+  });
   return {
     playAudio: vi.fn(),
-    playManaged: vi.fn(),
-    stopAudio: vi.fn(),
+    playManaged,
+    stopAudio,
     preload: vi.fn(),
     onExternalStop: vi.fn((callback) => {
       externalStopListeners.add(callback);
@@ -33,6 +54,9 @@ vi.mock('@/utils/audio', () => {
     }),
     offExternalStop: vi.fn((callback) => externalStopListeners.delete(callback)),
     __externalStopListeners: externalStopListeners,
+    __resetManaged() {
+      managedHandle = null;
+    },
   };
 });
 
@@ -114,6 +138,7 @@ describe('immersive home (Issue #192)', () => {
     vi.clearAllMocks();
     homeFeedMounts.length = 0;
     audioModule.__externalStopListeners.clear();
+    audioModule.__resetManaged();
     resolveDefaultTab.mockReturnValue('recommended');
     getNameplatePreview.mockReturnValue({ previews: [], total: 0 });
   });
@@ -429,5 +454,34 @@ describe('immersive home (Issue #192)', () => {
     // 卸载后取消订阅，不再接收广播也不泄漏监听器
     wrapper.unmount();
     expect(audioModule.__externalStopListeners.size).toBe(0);
+  });
+
+  it('keeps the initiator playing when taking over playback from another card (A→B)', async () => {
+    setupUni();
+    const cardA = mountStageCard({ id: 11, audio_url: 'https://example.com/a.mp3' });
+    const cardB = mountStageCard({ id: 12, audio_url: 'https://example.com/b.mp3' });
+    await cardA.vm.$nextTick();
+    await cardB.vm.$nextTick();
+
+    // A 先开始播放，持有全局受控句柄
+    await cardA.find('.play-button').trigger('tap');
+    expect(cardA.vm.playing).toBe(true);
+    expect(cardA.vm.playbackHandle).not.toBeNull();
+
+    // B 发起置换播放：真实顺序为先置 playing，随后 playManaged 内部销毁 A 的旧句柄
+    // 并广播外部停止。B 必须忽略这条不属于自己的停止，否则刚置好的播放态被误复位
+    await cardB.find('.play-button').trigger('tap');
+
+    expect(cardA.vm.playing).toBe(false);
+    expect(cardA.vm.playbackHandle).toBeNull();
+    expect(cardB.vm.playing).toBe(true);
+    expect(cardB.vm.playbackHandle).not.toBeNull();
+    expect(audioModule.playManaged).toHaveBeenCalledTimes(2);
+
+    // B 再次点击暂停：stopAudio 广播携带 B 的句柄，仅归属者 B 复位，A 不受影响
+    await cardB.find('.play-button').trigger('tap');
+    expect(cardA.vm.playing).toBe(false);
+    expect(cardB.vm.playing).toBe(false);
+    expect(cardB.vm.playbackHandle).toBeNull();
   });
 });

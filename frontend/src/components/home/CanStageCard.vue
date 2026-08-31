@@ -205,6 +205,11 @@ export default {
       },
     },
   },
+  created() {
+    /* 播放句柄不进 data：需与外部停止广播携带的句柄做全等比较，
+     * 被响应式代理包装后引用不相等会导致归属判断失效 */
+    this.playbackHandle = null;
+  },
   mounted() {
     if (this.active) this.ensurePreviews();
     /* 订阅外部停止广播：切 tab/跳详情/被其他播放顶掉时复位本地播放态 */
@@ -221,8 +226,12 @@ export default {
     }
   },
   methods: {
-    /* 外部停止回调：只复位本地展示态，不得再调 stopAudio（避免递归） */
-    resetPlaybackState() {
+    /* 外部停止回调：只复位本地展示态，不得再调 stopAudio（避免递归）。
+     * 广播携带被停止句柄：不属于本卡时忽略——否则本卡发起置换播放时，
+     * 先置 playing 再调 playManaged 的顺序会被旧句柄的停止广播误复位 */
+    resetPlaybackState(stoppedHandle) {
+      if (stoppedHandle && stoppedHandle !== this.playbackHandle) return;
+      this.playbackHandle = null;
       this.playing = false;
       this.progress = 0;
       this.progressSeconds = 0;
@@ -248,7 +257,7 @@ export default {
       this.progress = 0;
       this.progressSeconds = 0;
       this.playing = true;
-      playManaged(this.can.audio_url, {
+      this.playbackHandle = playManaged(this.can.audio_url, {
         onTimeUpdate: ({ currentTime, duration }) => {
           this.progressSeconds = currentTime;
           if (duration > 0) {
