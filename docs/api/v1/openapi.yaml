@@ -617,6 +617,12 @@ paths:
           in: query
           schema: { type: integer }
           description: 只筛选装罐时的初始方言提示，不代表规范分类。
+        - name: feed
+          in: query
+          schema:
+            type: string
+            enum: [dialect, following, recommended]
+          description: 首页流式列表场景；recommended 按推荐分值排序并附带推荐理由。
         - name: mine
           in: query
           schema: { type: boolean, default: false }
@@ -1894,6 +1900,12 @@ components:
             recorder_followed_by_me:
               type: boolean
               description: 当前用户是否已关注该罐的录制者；游客恒为 false。
+            recommend_reasons:
+              type: array
+              items:
+                type: string
+                enum: [hot, same_dialect, following, search_match]
+              description: 推荐理由标签；仅 feed=recommended 有值（游客或未命中个性化时为 ["hot"]），其余场景恒为空数组。
             nameplate_count: { type: integer, minimum: 0 }
             nameplate_total:
               type: integer

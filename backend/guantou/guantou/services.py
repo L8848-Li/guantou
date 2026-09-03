@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 
 from django.db import transaction
 from django.db.models import (
@@ -6,7 +7,9 @@ from django.db.models import (
     Case,
     Count,
     Exists,
+    ExpressionWrapper,
     F,
+    FloatField,
     IntegerField,
     OuterRef,
     Prefetch,
@@ -14,6 +17,7 @@ from django.db.models import (
     Value,
     When,
 )
+from django.db.models.functions import Cast
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
@@ -27,6 +31,7 @@ from .models import (
     CanLike,
     CanPost,
     CanTransition,
+    Dialect,
     Flavor,
     FlavorPackage,
     Nameplate,
@@ -230,6 +235,140 @@ def with_can_card_annotations(queryset, user):
         liked_by_me=Value(False, output_field=BooleanField()),
         recorder_followed_by_me=Value(False, output_field=BooleanField()),
     )
+
+
+RECOMMEND_VIEWS_CAP = 20
+RECOMMEND_WEIGHT_VIEWS = 1.0
+RECOMMEND_WEIGHT_LIKES = 3.0
+RECOMMEND_WEIGHT_SUPPORTS = 2.0
+RECOMMEND_WEIGHT_COMMENTS = 2.0
+RECOMMEND_HALF_LIFE_DAYS = 7
+RECOMMEND_BOOST_SAME_DIALECT = 30.0
+RECOMMEND_BOOST_FOLLOWING = 40.0
+RECOMMEND_BOOST_SEARCH = 15.0
+
+
+def expanded_dialect_ids(root_ids):
+    ids = set()
+    for dialect in Dialect.objects.filter(id__in=root_ids).prefetch_related("children"):
+        ids.update(dialect.descendant_ids())
+    return ids
+
+
+def _float(value):
+    return Value(float(value), output_field=FloatField())
+
+
+def _recommend_user_context(user):
+    """Collect the personalization context (preferred dialects / followed authors /
+    recent search keywords) without issuing per-can queries."""
+    preferred = []
+    followed_authors = []
+    keywords = []
+    if user and user.is_authenticated:
+        if hasattr(user, "user_info"):
+            roots = list(user.user_info.followed_dialects.values_list("id", flat=True))
+            if user.user_info.primary_dialect_id:
+                roots.append(user.user_info.primary_dialect_id)
+            if roots:
+                preferred = list(expanded_dialect_ids(roots))
+        followed_authors = list(
+            user.following_relationships.values_list("followed_id", flat=True)
+        )
+        recent_keywords = (
+            SearchTermHit.objects.filter(attributer=f"user:{user.id}")
+            .order_by("-hit_date", "-created_at")
+            .values_list("term__keyword", flat=True)
+        )[:20]
+        keywords = list(dict.fromkeys(recent_keywords))[:5]
+    return preferred, followed_authors, keywords
+
+
+def annotate_recommended_feed(queryset, user):
+    """推荐 feed：冷启动热度分 + 登录态个性化加权 + 可解释理由标签。
+
+    要求传入的 queryset 已注解 like_count / comment_count（views 为模型字段）；
+    本函数补充罐级铭牌支持数 support_count，并按分数降序、id 兜底排序以保证翻页稳定。
+    """
+    preferred, followed_authors, keywords = _recommend_user_context(user)
+
+    queryset = queryset.annotate(
+        support_count=Count(
+            "nameplates__supports",
+            filter=Q(nameplates__status=Nameplate.Status.ACTIVE),
+            distinct=True,
+        )
+    )
+
+    views_eff = Case(
+        When(views__gt=RECOMMEND_VIEWS_CAP, then=Value(RECOMMEND_VIEWS_CAP)),
+        default=F("views"),
+        output_field=FloatField(),
+    )
+    engagement = ExpressionWrapper(
+        _float(RECOMMEND_WEIGHT_VIEWS) * views_eff
+        + _float(RECOMMEND_WEIGHT_LIKES)
+        * Cast(F("like_count"), output_field=FloatField())
+        + _float(RECOMMEND_WEIGHT_SUPPORTS)
+        * Cast(F("support_count"), output_field=FloatField())
+        + _float(RECOMMEND_WEIGHT_COMMENTS)
+        * Cast(F("comment_count"), output_field=FloatField()),
+        output_field=FloatField(),
+    )
+    half_life = timedelta(days=RECOMMEND_HALF_LIFE_DAYS)
+    now = timezone.now()
+    decay = Case(
+        When(created_at__gte=now - half_life, then=_float(1.0)),
+        When(created_at__gte=now - 2 * half_life, then=_float(0.5)),
+        When(created_at__gte=now - 4 * half_life, then=_float(0.25)),
+        default=_float(0.125),
+        output_field=FloatField(),
+    )
+
+    search_match_q = Q(pk__in=[])
+    for keyword in keywords:
+        search_match_q |= Q(
+            Q(concept_text__icontains=keyword)
+            | Q(nameplates__text_content__icontains=keyword)
+            | Q(nameplates__definition__icontains=keyword)
+            | Q(nameplates__flavor__name__icontains=keyword)
+        )
+
+    def boost(condition, amount):
+        return Case(
+            When(condition, then=_float(amount)),
+            default=_float(0.0),
+            output_field=FloatField(),
+        )
+
+    def reason(condition):
+        return Case(
+            When(condition, then=Value(True)),
+            default=Value(False),
+            output_field=BooleanField(),
+        )
+
+    same_dialect_q = (
+        Q(submitted_dialect_id__in=preferred) if preferred else Q(pk__in=[])
+    )
+    following_q = (
+        Q(recorder_id__in=followed_authors) if followed_authors else Q(pk__in=[])
+    )
+
+    recommend_score = ExpressionWrapper(
+        engagement * decay
+        + boost(same_dialect_q, RECOMMEND_BOOST_SAME_DIALECT)
+        + boost(following_q, RECOMMEND_BOOST_FOLLOWING)
+        + boost(search_match_q, RECOMMEND_BOOST_SEARCH),
+        output_field=FloatField(),
+    )
+
+    return queryset.annotate(
+        recommend_score=recommend_score,
+        recommend_same_dialect=reason(same_dialect_q),
+        recommend_following=reason(following_q),
+        recommend_search_match=reason(search_match_q),
+    ).order_by("-recommend_score", "-id")
 
 
 def aggregate_search(keyword, user=None, limit=DEFAULT_SEARCH_LIMIT):

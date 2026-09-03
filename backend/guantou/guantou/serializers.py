@@ -802,6 +802,7 @@ class CanCardSerializer(serializers.ModelSerializer):
     use_count = serializers.SerializerMethodField()
     liked_by_me = serializers.SerializerMethodField()
     recorder_followed_by_me = serializers.SerializerMethodField()
+    recommend_reasons = serializers.SerializerMethodField()
 
     class Meta:
         model = Can
@@ -823,6 +824,7 @@ class CanCardSerializer(serializers.ModelSerializer):
             "use_count",
             "liked_by_me",
             "recorder_followed_by_me",
+            "recommend_reasons",
             "duration_ms",
             "created_at",
         ]
@@ -941,6 +943,20 @@ class CanCardSerializer(serializers.ModelSerializer):
         return UserFollow.objects.filter(
             follower=user, followed_id=obj.recorder_id
         ).exists()
+
+    def get_recommend_reasons(self, obj):
+        reasons = []
+        if getattr(obj, "recommend_same_dialect", False):
+            reasons.append("same_dialect")
+        if getattr(obj, "recommend_following", False):
+            reasons.append("following")
+        if getattr(obj, "recommend_search_match", False):
+            reasons.append("search_match")
+        if not reasons:
+            # 非推荐流无注解时返回空数组；推荐流未命中个性化则回退冷启动热度。
+            if getattr(obj, "recommend_score", None) is not None:
+                reasons.append("hot")
+        return reasons
 
 
 class CanCommentSerializer(serializers.ModelSerializer):

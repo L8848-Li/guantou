@@ -1,15 +1,12 @@
 from django.db import transaction
 from django.db.models import (
     BooleanField,
-    Case,
     Count,
     Exists,
     F,
-    IntegerField,
     OuterRef,
     Q,
     Value,
-    When,
 )
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -39,7 +36,6 @@ from .models import (
     Package,
     Pronunciation,
     RecordingChallenge,
-    SearchTermHit,
     Shelf,
 )
 from .permissions import IsCommentAuthorOrAdmin, IsOwnerOrAdmin
@@ -61,8 +57,10 @@ from .serializers import (
 )
 from .services import (
     aggregate_search,
+    annotate_recommended_feed,
     daily_can,
     elect_primary_nameplate,
+    expanded_dialect_ids,
     hot_search_terms,
     nameplate_preview_queryset,
     prefetch_nameplate_previews,
@@ -90,13 +88,6 @@ def dialect_ids(value, scope):
     if dialect is None:
         return []
     return dialect.descendant_ids() if scope == "subtree" else [dialect.id]
-
-
-def expanded_dialect_ids(root_ids):
-    ids = set()
-    for dialect in Dialect.objects.filter(id__in=root_ids).prefetch_related("children"):
-        ids.update(dialect.descendant_ids())
-    return ids
 
 
 class AggregateSearchView(APIView):
@@ -590,61 +581,7 @@ class CanViewSet(viewsets.ModelViewSet):
                         | Q(submitted_dialect_id__in=expanded_dialect_ids(roots))
                     )
             else:
-                roots = []
-                if user.is_authenticated and hasattr(user, "user_info"):
-                    roots = list(
-                        user.user_info.followed_dialects.values_list("id", flat=True)
-                    )
-                    if user.user_info.primary_dialect_id:
-                        roots.append(user.user_info.primary_dialect_id)
-                search_match = Q()
-                if user.is_authenticated:
-                    recent_keywords = (
-                        SearchTermHit.objects.filter(attributer=f"user:{user.id}")
-                        .order_by("-hit_date", "-created_at")
-                        .values_list("term__keyword", flat=True)
-                    )[:20]
-                    keywords = list(dict.fromkeys(recent_keywords))[:5]
-                    for keyword in keywords:
-                        search_match |= (
-                            Q(concept_text__icontains=keyword)
-                            | Q(nameplates__text_content__icontains=keyword)
-                            | Q(nameplates__definition__icontains=keyword)
-                            | Q(nameplates__flavor__name__icontains=keyword)
-                        )
-                if search_match:
-                    queryset = queryset.annotate(
-                        search_priority=Case(
-                            When(search_match, then=Value(1)),
-                            default=Value(0),
-                            output_field=IntegerField(),
-                        )
-                    )
-                else:
-                    queryset = queryset.annotate(
-                        search_priority=Value(0, output_field=IntegerField())
-                    )
-                preferred = expanded_dialect_ids(roots)
-                if preferred:
-                    queryset = queryset.annotate(
-                        dialect_priority=Case(
-                            When(submitted_dialect_id__in=preferred, then=Value(1)),
-                            default=Value(0),
-                            output_field=IntegerField(),
-                        )
-                    )
-                else:
-                    queryset = queryset.annotate(
-                        dialect_priority=Value(0, output_field=IntegerField())
-                    )
-                queryset = queryset.order_by(
-                    "-search_priority",
-                    "-dialect_priority",
-                    "-like_count",
-                    "-views",
-                    "-created_at",
-                    "-id",
-                )
+                queryset = annotate_recommended_feed(queryset, user)
         if not (user and user.is_authenticated and user.is_staff):
             if user and user.is_authenticated:
                 queryset = queryset.filter(
