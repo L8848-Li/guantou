@@ -327,11 +327,16 @@ def annotate_recommended_feed(queryset, user):
 
     search_match_q = Q(pk__in=[])
     for keyword in keywords:
-        search_match_q |= Q(
-            Q(concept_text__icontains=keyword)
-            | Q(nameplates__text_content__icontains=keyword)
-            | Q(nameplates__definition__icontains=keyword)
-            | Q(nameplates__flavor__name__icontains=keyword)
+        # 铭牌关联字段必须走 Exists 子查询，否则命中部分铭牌时会在 Case/When
+        # 注解里引入 JOIN 分组，导致同一罐出现多行、distinct() 无法去重。
+        search_match_q |= Q(concept_text__icontains=keyword) | Q(
+            Exists(
+                Nameplate.objects.filter(can_id=OuterRef("pk")).filter(
+                    Q(text_content__icontains=keyword)
+                    | Q(definition__icontains=keyword)
+                    | Q(flavor__name__icontains=keyword)
+                )
+            )
         )
 
     def boost(condition, amount):

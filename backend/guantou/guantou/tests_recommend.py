@@ -15,6 +15,8 @@ from .models import (
     DialectCircle,
     Nameplate,
     NameplateSupport,
+    SearchTerm,
+    SearchTermHit,
 )
 
 
@@ -57,10 +59,10 @@ class RecommendedFeedTests(TestCase):
     def comment(self, can, user):
         return CanComment.objects.create(can=can, author=user, content="好")
 
-    def add_active_nameplate(self, can):
+    def add_active_nameplate(self, can, text="样"):
         return Nameplate.objects.create(
             can=can,
-            text_content="样",
+            text_content=text,
             status=Nameplate.Status.ACTIVE,
             source={"type": "creator"},
             creator=self.author,
@@ -173,3 +175,24 @@ class RecommendedFeedTests(TestCase):
             [item["id"] for item in response.data["results"]], [b.id, a.id]
         )
         self.assertEqual(response.data["results"][0]["recommend_reasons"], ["hot"])
+
+    def test_search_match_on_partial_nameplates_does_not_duplicate(self):
+        term = SearchTerm.objects.create(keyword="月亮", count=1)
+        SearchTermHit.objects.create(
+            term=term,
+            attributer=f"user:{self.user.id}",
+            hit_date=timezone.localdate(),
+        )
+        can = self.make_can(self.child, "无关概念", views=0)
+        self.add_active_nameplate(can, text="月亮")
+        self.add_active_nameplate(can, text="其他说法")
+
+        response = self.recommended(self.user)
+
+        self.assertEqual(response.status_code, 200)
+        ids = [item["id"] for item in response.data["results"]]
+        self.assertEqual(ids.count(can.id), 1)
+        reasons = {
+            item["id"]: item["recommend_reasons"] for item in response.data["results"]
+        }
+        self.assertIn("search_match", reasons[can.id])
